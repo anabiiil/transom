@@ -1,0 +1,36 @@
+# Homebrew formula template for Transom.
+# The release workflow substitutes @TAG@, @VERSION@, @ARM_SHA@, @AMD_SHA@
+# and pushes the result to the anabiiil/homebrew-tap repository as
+# Formula/transom.rb — do not edit the generated copy by hand.
+class Transom < Formula
+  desc "Careful disk cleaner for macOS"
+  homepage "https://github.com/anabiiil/transom"
+  version "@VERSION@"
+  license "MIT"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/anabiiil/transom/releases/download/@TAG@/transom-@TAG@-darwin-arm64.tar.gz"
+      sha256 "@ARM_SHA@"
+    else
+      url "https://github.com/anabiiil/transom/releases/download/@TAG@/transom-@TAG@-darwin-amd64.tar.gz"
+      sha256 "@AMD_SHA@"
+    end
+  end
+
+  def install
+    bin.install "transom"
+  end
+
+  def caveats
+    <<~EOS
+      Install the native Transom.app (opens the control panel in its own
+      window) with:
+        transom app install
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/transom version")
+  end
+end

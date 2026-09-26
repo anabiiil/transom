@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transom</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="stylesheet" href="/static/app.css">
+<!-- Not deferred on purpose: app.js applies the saved theme before the
+     first paint, then waits for DOMContentLoaded for everything else. -->
+<script src="/static/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="24" height="24" rx="6.5" fill="#12B886"/>
+        <path d="M10.5 5.2c.5 4.6 2 6.1 6.6 6.6-4.6.5-6.1 2-6.6 6.6-.5-4.6-2-6.1-6.6-6.6 4.6-.5 6.1-2 6.6-6.6z" fill="#fff"/>
+        <path d="M17.4 3.6c.2 1.7.8 2.3 2.5 2.5-1.7.2-2.3.8-2.5 2.5-.2-1.7-.8-2.3-2.5-2.5 1.7-.2 2.3-.8 2.5-2.5z" fill="#06281F" fill-opacity=".45"/>
+      </svg>
+      <div><b>Transom</b><span>disk cleanup for macOS</span></div>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#overview" data-page="overview" title="Overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span class="nl">Overview</span>
+      </a>
+      <div class="nav-label">Clean up</div>
+      <a href="#system" data-page="system" title="System Junk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2.5"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span class="nl">System Junk</span> <span class="count" id="nav-system" hidden></span>
+      </a>
+      <a href="#developer" data-page="developer" title="Developer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span class="nl">Developer</span> <span class="count" id="nav-developer" hidden></span>
+      </a>
+      <a href="#projects" data-page="projects" title="Projects">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><line x1="3" y1="11" x2="21" y2="11"/></svg>
+        <span class="nl">Projects</span> <span class="count" id="nav-projects" hidden></span>
+      </a>
+      <a href="#files" data-page="files" title="Files">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nl">Files</span> <span class="count" id="nav-files" hidden></span>
+      </a>
+      <div class="nav-label">Activity</div>
+      <a href="#history" data-page="history" title="History">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+        <span class="nl">History</span>
+      </a>
+      <a href="#settings" data-page="settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nl">Settings</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <div class="theme-pill" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="light" title="Light theme" aria-pressed="false"><span class="ti" aria-hidden="true">☀</span><span class="tl"> Light</span></button>
+        <button type="button" data-theme-set="auto" title="Match system" aria-pressed="false"><span class="ti" aria-hidden="true">◐</span><span class="tl"> Auto</span></button>
+        <button type="button" data-theme-set="dark" title="Dark theme" aria-pressed="false"><span class="ti" aria-hidden="true">☾</span><span class="tl"> Dark</span></button>
+      </div>
+      <span class="ver">Transom</span>
+    </div>
+  </aside>
+
+  <div class="content">
+    <header class="topbar">
+      <div><h1 id="page-title">Overview</h1><div class="sub" id="page-sub"></div></div>
+      <span class="spacer"></span>
+      <span id="scan-pill" class="pill run" hidden>Scanning…</span>
+    </header>
+
+    <main>
+      <!-- ═══ OVERVIEW ═══ -->
+      <div class="page" id="page-overview">
+        <div class="hero">
+          <section class="hero-card feature" id="scan-card" aria-live="polite"></section>
+          <section class="hero-card ink" id="disk-card" aria-label="Disk usage"></section>
+        </div>
+        <div id="ov-results"></div>
+      </div>
+
+      <!-- ═══ GROUP PAGES (System Junk / Developer / Projects / Files) ═══ -->
+      <div class="page" id="page-group"></div>
+
+      <!-- ═══ HISTORY ═══ -->
+      <div class="page" id="page-history">
+        <section class="card">
+          <div class="card-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+            <h2>Past cleanups</h2>
+            <span class="hint" id="history-hint"></span>
+          </div>
+          <div class="card-body" id="history-body"><div class="empty">Loading…</div></div>
+        </section>
+      </div>
+
+      <!-- ═══ SETTINGS ═══ -->
+      <div class="page" id="page-settings"></div>
+    </main>
+
+    <div class="selbar" id="selbar" hidden>
+      <div class="sel-info">
+        <b id="sel-count">0 items selected</b>
+        <span id="sel-size">0 KB</span>
+      </div>
+      <span class="spacer"></span>
+      <button type="button" class="sm ghost" id="sel-clear">Clear</button>
+      <button type="button" class="primary" id="sel-clean">Clean…</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="busy" aria-live="assertive"><div class="box"><div class="spin" aria-hidden="true"></div><span id="busy-label">Working…</span></div></div>
+</body>
+</html>

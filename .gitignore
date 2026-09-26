@@ -1,0 +1,5 @@
+bin/
+dist/
+internal/macapp/bundle/*.tar.gz
+macapp/build/
+.DS_Store
