@@ -2,6 +2,19 @@
 
 All notable changes to Transom. Versions follow [semantic versioning](https://semver.org).
 
+## 0.1.1 — 2026-09-26
+
+### Changed
+
+- `transom ui` now opens the native `Transom.app` on macOS instead of a
+  browser tab: the first run installs it into `/Applications` (falling
+  back to `~/Applications` if that isn't writable), and later runs update
+  it in place whenever the installed copy doesn't match the `transom`
+  binary's version. A running copy is asked to quit before being updated.
+  Pass `--browser` for the previous behavior — starting the panel's
+  server and opening it in your default browser.
+- App icon now matches the in-app logo.
+
 ## 0.1.0 — 2026-09-26
 
 First release: a careful, read-only-until-you-say-so disk cleaner for macOS,

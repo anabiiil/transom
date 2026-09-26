@@ -2,7 +2,7 @@
 # Transom installer for macOS:
 #   curl -fsSL https://raw.githubusercontent.com/anabiiil/transom/main/install.sh | sh
 # Downloads the right binary for this Mac from the latest GitHub release
-# and installs it, then suggests `transom app install`.
+# and installs it, then suggests `transom ui`.
 set -eu
 
 REPO="anabiiil/transom"
@@ -52,5 +52,5 @@ esac
 
 echo
 echo "Installed transom $TAG to $BIN_DIR/transom"
-echo "Install the native app with:"
-echo "  $BIN_DIR/transom app install"
+echo "Open Transom (the first run installs Transom.app into /Applications):"
+echo "  $BIN_DIR/transom ui"

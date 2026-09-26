@@ -60,7 +60,8 @@ embedded web control panel, and (on macOS) a native app window around it.
 
 **Native app (macOS)**
 - `Transom.app`: a plain AppKit + WKWebView window around the same panel,
-  no Electron. `transom app install` puts it in `/Applications`.
+  no Electron. `transom ui` installs it into `/Applications` (or updates
+  it there) and opens it — no separate install step needed.
 
 ## Safety
 
@@ -129,7 +130,7 @@ workflow):
 ```bash
 brew tap anabiiil/tap
 brew install transom
-transom app install
+transom ui   # first run installs Transom.app into /Applications
 ```
 
 ### Build from source
@@ -170,14 +171,19 @@ go test ./...
 ```
 transom scan [--category id,...] [--json] [-v]     read-only report
 transom clean [--category id,...] [--safe-only] [--delete] [--dry-run] [--yes]
-transom ui [--window-host] [--detached] [--foreground]   open the control panel
+transom ui [--browser] [--foreground]                open the control panel
 transom app install [--dest dir]                    extract Transom.app into /Applications (macOS)
 transom app open                                    open Transom.app (macOS)
 transom version
 ```
 
-Plain `transom ui` starts the panel's server and opens it in your default
-browser, detaching from the terminal so it stays free (use `--foreground`
-to keep it attached instead). The full HTTP contract the panel talks to
-the server over — endpoints, request/response shapes, and the category
-list — is documented in [`docs/CONTRACT.md`](docs/CONTRACT.md).
+On macOS, `transom ui` opens the native `Transom.app`: the first run installs
+it into `/Applications` (falling back to `~/Applications` if that isn't
+writable), and later runs update it in place whenever the installed copy is
+older than the `transom` binary you're running. Pass `--browser` for the old
+behavior instead — starting the panel's server and opening it in your
+default browser, detaching from the terminal so it stays free (use
+`--foreground` to keep it attached instead). Non-macOS always uses browser
+mode. The full HTTP contract the panel talks to the server over —
+endpoints, request/response shapes, and the category list — is documented
+in [`docs/CONTRACT.md`](docs/CONTRACT.md).
