@@ -18,10 +18,44 @@ env:
   TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  resolve-release:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve the release commit
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || ! git check-ref-format "refs/tags/$TAG"; then
+            echo "::error::Release tag must be a semantic version such as v1.2.3 or v1.2.3-rc.1."
+            exit 1
+          fi
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            SHA=$(git rev-parse "refs/tags/$TAG^{commit}")
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            SHA="$RUN_SHA"
+          else
+            echo "::error::The pushed release tag could not be resolved."
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
   build-macos:
+    needs: resolve-release
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release.outputs.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-go@v5
         with:
@@ -56,6 +90,23 @@ jobs:
           ditto -c -k --keepParent macapp/build/Transom.app "Transom-${TAG}-macos.zip"
           shasum -a 256 transom-*.tar.gz Transom-*.zip > checksums.txt
 
+      - name: Validate Homebrew cask for both architectures
+        env:
+          HOMEBREW_DEVELOPER: "1"
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_ANALYTICS: "1"
+        run: |
+          VERSION="${TAG#v}"
+          ARM_SHA=$(shasum -a 256 "transom-${TAG}-darwin-arm64.tar.gz" | cut -d' ' -f1)
+          AMD_SHA=$(shasum -a 256 "transom-${TAG}-darwin-amd64.tar.gz" | cut -d' ' -f1)
+          sed -e "s/@TAG@/${TAG}/g" \
+              -e "s/@VERSION@/${VERSION}/g" \
+              -e "s/@ARM_SHA@/${ARM_SHA}/g" \
+              -e "s/@AMD_SHA@/${AMD_SHA}/g" \
+              packaging/homebrew/transom.rb.tmpl > transom.rb
+          brew ruby packaging/homebrew/validate-cask.rb transom.rb \
+            "transom-${TAG}-darwin-arm64.tar.gz" "transom-${TAG}-darwin-amd64.tar.gz"
+
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -65,7 +116,7 @@ jobs:
             checksums.txt
 
   release:
-    needs: build-macos
+    needs: [resolve-release, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -76,6 +127,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          target_commitish: ${{ needs.resolve-release.outputs.sha }}
           files: |
             transom-*.tar.gz
             Transom-*.zip
@@ -84,36 +136,8 @@ jobs:
 
   homebrew-tap:
     needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: macos
-
-      - name: Update the tap formula
-        env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          if [ -z "$TAP_TOKEN" ]; then
-            echo "HOMEBREW_TAP_TOKEN secret not set — skipping the Homebrew tap update."
-            exit 0
-          fi
-          VERSION="${TAG#v}"
-          ARM_SHA=$(sha256sum "transom-${TAG}-darwin-arm64.tar.gz" | cut -d' ' -f1)
-          AMD_SHA=$(sha256sum "transom-${TAG}-darwin-amd64.tar.gz" | cut -d' ' -f1)
-          sed -e "s/@TAG@/${TAG}/g" \
-              -e "s/@VERSION@/${VERSION}/g" \
-              -e "s/@ARM_SHA@/${ARM_SHA}/g" \
-              -e "s/@AMD_SHA@/${AMD_SHA}/g" \
-              packaging/homebrew/transom.rb.tmpl > transom.rb
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/anabiiil/homebrew-tap.git" tap
-          mkdir -p tap/Formula
-          cp transom.rb tap/Formula/transom.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/transom.rb
-          git diff --cached --quiet || git commit -m "transom ${TAG}"
-          git push
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets:
+      HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}

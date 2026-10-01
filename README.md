@@ -104,9 +104,10 @@ Download the latest release from
 launch needs **right-click → Open** instead of a double-click, or Gatekeeper
 will refuse to open it.
 
-Or run one command, without Homebrew — it installs the `transom` CLI to
-`~/.transom/bin` and suggests `transom app install` to also put
-`Transom.app` in `/Applications`:
+Or run one command, without Homebrew — it installs the prebuilt `transom`
+CLI to `~/.transom/bin`. Run `transom ui` to install `Transom.app` in
+`/Applications` and open it. No Xcode or Command Line Tools update is
+needed to install the release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/anabiiil/transom/main/install.sh | sh
@@ -123,15 +124,33 @@ xattr -c ./transom   # clear the quarantine flag Gatekeeper puts on downloads
 
 ### Homebrew
 
-Once the tap is published (it isn't yet — `anabiiil/homebrew-tap` doesn't
-have a `transom` formula until the first tagged release runs the release
-workflow):
+Install the prebuilt cask. The installer handles tap setup and trusts only
+the Transom cask on Homebrew versions that require it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anabiiil/transom/main/install.sh | sh -s -- --homebrew
+transom ui
+```
+
+Or run the Homebrew steps directly:
 
 ```bash
 brew tap anabiiil/tap
-brew install transom
+brew update
+if brew help trust >/dev/null 2>&1; then
+  brew trust --cask anabiiil/tap/transom
+fi
+brew install --cask anabiiil/tap/transom
 transom ui   # first run installs Transom.app into /Applications
 ```
+
+The cask downloads the released binary and does not build from source, so
+it avoids Homebrew's formula build checks for outdated Command Line Tools.
+If you installed the previous formula, switch once with
+`brew uninstall --formula transom`, then install the cask using the steps
+above. Subsequent updates use `brew upgrade --cask anabiiil/tap/transom`.
+The release is ad-hoc signed. If macOS blocks `transom` on its first launch,
+allow it in **System Settings → Privacy & Security**.
 
 ### Build from source
 

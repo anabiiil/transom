@@ -2,10 +2,27 @@
 # Transom installer for macOS:
 #   curl -fsSL https://raw.githubusercontent.com/anabiiil/transom/main/install.sh | sh
 # Downloads the right binary for this Mac from the latest GitHub release
-# and installs it, then suggests `transom ui`.
+# and installs it, then suggests `transom ui`. Pass --homebrew to install
+# the prebuilt Homebrew cask instead.
 set -eu
 
 REPO="anabiiil/transom"
+USE_HOMEBREW=false
+
+case "${1:-}" in
+  "") ;;
+  --homebrew) USE_HOMEBREW=true; shift ;;
+  --help|-h)
+    echo "Usage: install.sh [--homebrew]"
+    echo "Install the prebuilt macOS CLI directly, or through the Homebrew cask."
+    exit 0
+    ;;
+  *) echo "Unknown option: $1" >&2; exit 1 ;;
+esac
+if [ "$#" -ne 0 ]; then
+  echo "Usage: install.sh [--homebrew]" >&2
+  exit 1
+fi
 
 case "$(uname -s)" in
   Darwin) ;;
@@ -17,6 +34,31 @@ case "$(uname -m)" in
   x86_64) ARCH="amd64" ;;
   *) echo "Unsupported CPU architecture: $(uname -m)"; exit 1 ;;
 esac
+
+if [ "$USE_HOMEBREW" = true ]; then
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Homebrew isn't installed. Run this installer without --homebrew instead." >&2
+    exit 1
+  fi
+  brew tap anabiiil/tap
+  brew update
+  # Recent Homebrew versions require explicit trust for third-party items.
+  # Older versions have no trust command. Trust only this cask, not the tap.
+  if brew help trust >/dev/null 2>&1; then
+    brew trust --cask anabiiil/tap/transom
+  fi
+  INSTALLED_FORMULAE=$(brew list --formula --full-name)
+  if printf '%s\n' "$INSTALLED_FORMULAE" | grep -Fxq 'anabiiil/tap/transom'; then
+    echo "Transom's old formula is installed. To switch to the prebuilt cask, run:" >&2
+    echo "  brew uninstall --formula transom" >&2
+    echo "Then run this installer with --homebrew again." >&2
+    exit 1
+  fi
+  brew install --cask anabiiil/tap/transom
+  echo "Installed Transom. Run: transom ui"
+  echo "If macOS blocks the first launch, allow Transom in System Settings > Privacy & Security."
+  exit 0
+fi
 
 echo "Finding the latest release..."
 TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |

@@ -1,0 +1,96 @@
+name: Sync Homebrew tap
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish to Homebrew, e.g. v0.1.1"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      HOMEBREW_TAP_DEPLOY_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-tap
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+      # Use the workflow's source/template, even when syncing an older release.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check release tag and tap credentials
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || ! git check-ref-format "refs/tags/$TAG"; then
+            echo "::error::Release tag must be a semantic version such as v1.2.3 or v1.2.3-rc.1."
+            exit 1
+          fi
+          if [ -z "$TAP_DEPLOY_KEY" ]; then
+            echo "::error::HOMEBREW_TAP_DEPLOY_KEY is missing. Add a write-enabled deploy key to anabiiil/homebrew-tap and store its private key in this repository's Actions secret."
+            exit 1
+          fi
+
+      - name: Download the published release binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "transom-${TAG}-darwin-arm64.tar.gz" \
+            --pattern "transom-${TAG}-darwin-amd64.tar.gz"
+
+      - name: Render and validate the cask for both architectures
+        env:
+          HOMEBREW_DEVELOPER: "1"
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_ANALYTICS: "1"
+        run: |
+          VERSION="${TAG#v}"
+          ARM_SHA=$(shasum -a 256 "transom-${TAG}-darwin-arm64.tar.gz" | cut -d' ' -f1)
+          AMD_SHA=$(shasum -a 256 "transom-${TAG}-darwin-amd64.tar.gz" | cut -d' ' -f1)
+          sed -e "s/@TAG@/${TAG}/g" \
+              -e "s/@VERSION@/${VERSION}/g" \
+              -e "s/@ARM_SHA@/${ARM_SHA}/g" \
+              -e "s/@AMD_SHA@/${AMD_SHA}/g" \
+              packaging/homebrew/transom.rb.tmpl > transom.rb
+          brew ruby packaging/homebrew/validate-cask.rb transom.rb \
+            "transom-${TAG}-darwin-arm64.tar.gz" "transom-${TAG}-darwin-amd64.tar.gz"
+
+      - name: Check out the tap with its deploy key
+        uses: actions/checkout@v4
+        with:
+          repository: anabiiil/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Publish the cask and remove the legacy formula
+        run: |
+          mkdir -p tap/Casks
+          cp transom.rb tap/Casks/transom.rb
+          rm -f tap/Formula/transom.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/transom.rb
+          if git ls-files --error-unmatch Formula/transom.rb >/dev/null 2>&1; then
+            git add -u Formula/transom.rb
+          fi
+          git diff --cached --quiet || git commit -m "transom ${TAG}"
+          git push

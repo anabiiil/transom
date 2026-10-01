@@ -1,35 +1,33 @@
-# Homebrew formula template for Transom.
+# Homebrew cask template for Transom's prebuilt macOS CLI.
 # The release workflow substitutes @TAG@, @VERSION@, @ARM_SHA@, @AMD_SHA@
 # and pushes the result to the anabiiil/homebrew-tap repository as
-# Formula/transom.rb — do not edit the generated copy by hand.
-class Transom < Formula
+# Casks/transom.rb — do not edit the generated copy by hand.
+# A cask installs the binary directly, without formula source-build checks
+# that require a current Xcode/Command Line Tools toolchain on the user's Mac.
+cask "transom" do
+  arch arm: "arm64", intel: "amd64"
+
+  version "@VERSION@"
+  sha256 arm:   "@ARM_SHA@",
+         intel: "@AMD_SHA@"
+
+  url "https://github.com/anabiiil/transom/releases/download/@TAG@/transom-@TAG@-darwin-#{arch}.tar.gz"
+  name "Transom"
   desc "Careful disk cleaner for macOS"
   homepage "https://github.com/anabiiil/transom"
-  version "@VERSION@"
-  license "MIT"
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/anabiiil/transom/releases/download/@TAG@/transom-@TAG@-darwin-arm64.tar.gz"
-      sha256 "@ARM_SHA@"
-    else
-      url "https://github.com/anabiiil/transom/releases/download/@TAG@/transom-@TAG@-darwin-amd64.tar.gz"
-      sha256 "@AMD_SHA@"
-    end
+  # Older Homebrew releases interpret a bare macOS symbol as an exact
+  # version; the newer shared parser interprets it as a minimum instead.
+  if MacOSRequirement.respond_to?(:parse)
+    depends_on macos: :monterey
+  else
+    depends_on macos: ">= :monterey"
   end
 
-  def install
-    bin.install "transom"
-  end
+  binary "transom"
 
-  def caveats
-    <<~EOS
-      Run `transom ui` — the first run installs Transom.app into
-      /Applications.
-    EOS
-  end
-
-  test do
-    assert_match version.to_s, shell_output("#{bin}/transom version")
-  end
+  caveats <<~EOS
+    Run `transom ui` — the first run installs Transom.app into
+    /Applications, or ~/Applications if /Applications isn't writable.
+  EOS
 end
