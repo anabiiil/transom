@@ -66,6 +66,30 @@ func TestWindowsDisposableCachesKeepEditorSettings(t *testing.T) {
 	}
 }
 
+func TestCustomEditorDataInsideCachesAndTempIsPreserved(t *testing.T) {
+	for _, goos := range []string{"darwin", "windows"} {
+		for _, marker := range []string{"User/settings.json", "User/keybindings.json", "User/globalStorage/state.vscdb", "User/workspaceStorage/workspace/state.vscdb"} {
+			t.Run(goos+"/"+marker, func(t *testing.T) {
+				home := t.TempDir()
+				parent := filepath.Join(home, "Library", "Caches", "custom-cache")
+				if goos == "windows" {
+					parent = filepath.Join(home, "AppData", "Local", "Temp", "custom-cache")
+				}
+				profile := filepath.Join(parent, "arbitrary-name")
+				file := filepath.Join(profile, filepath.FromSlash(marker))
+				backup := filepath.Join(profile, "Backups", "unsaved.txt")
+				write(t, file)
+				write(t, backup)
+				for _, path := range []string{parent, profile, filepath.Join(profile, "User"), file, backup} {
+					if err := CheckCleanup(context.Background(), path, home, goos); err == nil {
+						t.Errorf("custom editor state allowed: %s", path)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestWrappedMacApplicationInsideCacheIsPreserved(t *testing.T) {
 	home := t.TempDir()
 	cache := filepath.Join(home, "Library", "Caches", "update-staging")

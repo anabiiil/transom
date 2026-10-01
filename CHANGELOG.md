@@ -2,6 +2,14 @@
 
 All notable changes to Transom. Versions follow [semantic versioning](https://semver.org).
 
+## 0.2.2 — 2026-10-01
+
+### Fixed
+
+- Preserve VS Code user data in custom `--user-data-dir` locations by detecting
+  its settings and workspace storage layout, even inside caches or temporary
+  folders on macOS and Windows.
+
 ## 0.2.1 — 2026-10-01
 
 ### Fixed

@@ -133,14 +133,45 @@ func IsApplicationDir(path string) bool {
 	return false
 }
 
+// IsEditorDataDir recognizes VS Code's user-data layout even when the user
+// chooses an arbitrary --user-data-dir, including inside cache/temp folders.
+func IsEditorDataDir(path string) bool {
+	user := filepath.Join(path, "User")
+	if !directory(user) {
+		return false
+	}
+	return regular(filepath.Join(user, "settings.json")) ||
+		regular(filepath.Join(user, "keybindings.json")) ||
+		regular(filepath.Join(user, "globalStorage", "state.vscdb")) ||
+		directory(filepath.Join(user, "workspaceStorage"))
+}
+
+func disposableProfileCache(path, root string, profiles []editorRoot) bool {
+	for _, profile := range profiles {
+		if !profile.allowCaches || !strings.EqualFold(filepath.Clean(root), filepath.Clean(profile.path)) {
+			continue
+		}
+		for _, cache := range []string{"Cache", "Code Cache", "GPUCache", "logs"} {
+			if inside(path, filepath.Join(root, cache)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ProtectedLocation is a cheap check for an installation/profile itself or
 // anything inside it, including a configured project root inside an app.
 func ProtectedLocation(path, home, goos string) bool {
-	if protectedLocation(path, home, goos, editorRoots(home, goos)) {
+	profiles := editorRoots(home, goos)
+	if protectedLocation(path, home, goos, profiles) {
 		return true
 	}
 	for ancestor := filepath.Clean(path); ; ancestor = filepath.Dir(ancestor) {
 		if IsApplicationDir(ancestor) {
+			return true
+		}
+		if IsEditorDataDir(ancestor) && !disposableProfileCache(path, ancestor, profiles) {
 			return true
 		}
 		if parent := filepath.Dir(ancestor); parent == ancestor {
@@ -189,7 +220,7 @@ func CheckCleanup(ctx context.Context, path, home, goos string) error {
 		if visited > inspectionLimit {
 			return fmt.Errorf("cannot safely inspect this large folder; preserving %s", path)
 		}
-		if protectedLocation(p, home, goos, profiles) || entry.IsDir() && IsApplicationDir(p) {
+		if protectedLocation(p, home, goos, profiles) || entry.IsDir() && (IsApplicationDir(p) || IsEditorDataDir(p)) {
 			return fmt.Errorf("folder contains an application or editor data; preserving %s", path)
 		}
 		return nil

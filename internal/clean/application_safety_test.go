@@ -20,11 +20,13 @@ func TestSavedCacheScanCannotRemoveVSCode(t *testing.T) {
 			appFile := filepath.Join(app, "Contents", "Resources", "app", "node_modules", "dep", "index.js")
 			shipit := filepath.Join(caches, "com.microsoft.VSCode.ShipIt")
 			state := filepath.Join(home, "Library", "Application Support", "Code", "User", "settings.json")
+			customProfile := filepath.Join(caches, "custom-editor-data")
+			customState := filepath.Join(customProfile, "User", "workspaceStorage", "workspace", "state.vscdb")
 			disposable := filepath.Join(caches, "thumbnails", "cache.bin")
-			for _, p := range []string{appFile, filepath.Join(shipit, "ShipItState.plist"), state, disposable} {
+			for _, p := range []string{appFile, filepath.Join(shipit, "ShipItState.plist"), state, customState, disposable} {
 				writeFile(t, p, 20)
 			}
-			protected := []string{app, appFile, filepath.Dir(app), shipit, state}
+			protected := []string{app, appFile, filepath.Dir(app), shipit, state, customProfile, customState}
 			res := &scan.Result{Categories: []scan.CategoryResult{{ID: "user-caches"}}}
 			var ids []string
 			for _, p := range append(protected, disposable) {
@@ -39,7 +41,7 @@ func TestSavedCacheScanCannotRemoveVSCode(t *testing.T) {
 			if got.Removed != 1 || len(got.Failed) != len(protected) {
 				t.Fatalf("unsafe cleanup result: %+v", got)
 			}
-			for _, p := range []string{appFile, filepath.Join(shipit, "ShipItState.plist"), state} {
+			for _, p := range []string{appFile, filepath.Join(shipit, "ShipItState.plist"), state, customState} {
 				if _, err := os.Stat(p); err != nil {
 					t.Errorf("protected data removed: %s", p)
 				}

@@ -36,3 +36,35 @@ func TestWindowsSavedScanCannotRemovePortableVSCode(t *testing.T) {
 		t.Fatal("application was removed")
 	}
 }
+
+func TestWindowsSavedTempScanCannotRemoveCustomEditorState(t *testing.T) {
+	for _, mode := range []string{ModeTrash, ModeDelete} {
+		t.Run(mode, func(t *testing.T) {
+			_, temp, _ := windowsFixture(t)
+			profile := filepath.Join(temp, "arbitrary-profile")
+			state := filepath.Join(profile, "User", "globalStorage", "state.vscdb")
+			backup := filepath.Join(profile, "Backups", "unsaved.txt")
+			windowsWrite(t, state)
+			windowsWrite(t, backup)
+			res := &scan.Result{Categories: []scan.CategoryResult{{ID: "temp-files"}}}
+			var ids []string
+			for _, path := range []string{profile, state, backup} {
+				id := scan.ItemID("temp-files", path)
+				ids = append(ids, id)
+				res.Categories[0].Items = append(res.Categories[0].Items, scan.Item{ID: id, Category: "temp-files", Path: path, Kind: scan.KindDir, Size: 20})
+			}
+			got, err := Run(context.Background(), res, Request{Items: ids, Mode: mode})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Removed != 0 || len(got.Failed) != len(ids) {
+				t.Fatalf("unsafe custom profile cleanup: %+v", got)
+			}
+			for _, path := range []string{state, backup} {
+				if _, err := os.Stat(path); err != nil {
+					t.Fatalf("editor state was removed: %s", path)
+				}
+			}
+		})
+	}
+}
