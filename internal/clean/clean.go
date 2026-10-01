@@ -141,7 +141,7 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 			g.ProjectRoots = res.Roots
 		}
 		g = platformGuard(g, it)
-		target, err := g.Check(it.Path)
+		target, err := g.CheckContext(ctx, it.Path)
 		if err != nil {
 			fail(it, err)
 			continue
@@ -150,6 +150,10 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 			if errors.Is(err, fs.ErrNotExist) {
 				err = errors.New("no longer exists")
 			}
+			fail(it, err)
+			continue
+		}
+		if err := platformValidate(ctx, g.Home, target, it); err != nil {
 			fail(it, err)
 			continue
 		}

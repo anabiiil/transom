@@ -3,6 +3,7 @@ package scan
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,7 +22,9 @@ import (
 //   - no installed app, login item or launch agent shares its vendor
 //     (first two components): with any com.microsoft.* app installed,
 //     nothing com.microsoft.* is reported,
-//   - and none of its components names an installed app or vendor.
+//   - none of its components names an installed app or vendor,
+//   - and the installed-app inventory completed without unreadable apps
+//     or skipped directories. Missing information is not an uninstall.
 
 var bundleIDRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*\.[A-Za-z0-9-]+(\.[A-Za-z0-9_-]+)+$`)
 
@@ -74,9 +77,10 @@ func vendorOf(id string) string {
 
 // installedApps is what counts as "still installed".
 type installedApps struct {
-	vendors     map[string]bool // lowercased "com.vendor"
-	vendorNames map[string]bool // lowercased "vendor" part of those
-	names       map[string]bool // lowercased app names, spaces removed
+	vendors             map[string]bool // lowercased "com.vendor"
+	vendorNames         map[string]bool // lowercased "vendor" part of those
+	names               map[string]bool // lowercased app names, spaces removed
+	inventoryIncomplete bool
 }
 
 func (ia *installedApps) addID(id string) {
@@ -93,6 +97,9 @@ func normName(s string) string {
 
 // isLeftover applies the rules above to a bundle-id-like entry name.
 func (ia *installedApps) isLeftover(id string) bool {
+	if ia.inventoryIncomplete {
+		return false
+	}
 	id = stripTeam(id)
 	if !bundleIDRe.MatchString(id) {
 		return false
@@ -128,10 +135,12 @@ func scanAppLeftovers(ctx context.Context, e *Env) ([]Item, error) {
 		}
 		return items, ctx.Err()
 	}
-	ia := collectInstalled(ctx, e.Home)
-	if len(ia.vendors) == 0 {
-		// Couldn't read a single installed app: everything would look
-		// orphaned. Report nothing rather than everything.
+	return scanAppLeftoversWithInstalled(ctx, e, collectInstalled(ctx, e.Home))
+}
+
+func scanAppLeftoversWithInstalled(ctx context.Context, e *Env, ia *installedApps) ([]Item, error) {
+	if ia.inventoryIncomplete || len(ia.vendors) == 0 {
+		// A partial inventory cannot prove an app was uninstalled.
 		return nil, nil
 	}
 	lib := filepath.Join(e.Home, "Library")
@@ -169,6 +178,37 @@ func scanAppLeftovers(ctx context.Context, e *Env) ([]Item, error) {
 	return items, nil
 }
 
+// ValidateAppLeftover rechecks ownership immediately before cleanup. A
+// reinstall since the scan, or an incomplete current inventory, preserves
+// the app's saved data. The caller must still apply its normal path guard.
+func ValidateAppLeftover(ctx context.Context, home, path string) error {
+	ia := collectInstalled(ctx, home)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return validateAppLeftoverWithInstalled(home, path, ia)
+}
+
+func validateAppLeftoverWithInstalled(home, path string, ia *installedApps) error {
+	for _, d := range leftoverDirs {
+		if filepath.Dir(path) != filepath.Join(home, "Library", d.sub) {
+			continue
+		}
+		name := filepath.Base(path)
+		if d.suffix != "" {
+			if !strings.HasSuffix(name, d.suffix) {
+				continue
+			}
+			name = strings.TrimSuffix(name, d.suffix)
+		}
+		if len(ia.vendors) > 0 && ia.isLeftover(name) {
+			return nil
+		}
+		return fmt.Errorf("preserving application data: uninstall could not be confirmed")
+	}
+	return fmt.Errorf("not an application-leftover entry")
+}
+
 // collectInstalled finds installed apps (the standard folders plus
 // whatever Spotlight knows about, e.g. apps on other volumes) and login
 // items / launch agents, and records their vendors and names.
@@ -176,7 +216,9 @@ func collectInstalled(ctx context.Context, home string) *installedApps {
 	ia := &installedApps{vendors: map[string]bool{}, vendorNames: map[string]bool{}, names: map[string]bool{}}
 	apps := map[string]bool{}
 	for _, root := range []string{"/Applications", filepath.Join(home, "Applications"), "/System/Applications", "/Library/PreferencePanes", filepath.Join(home, "Library", "PreferencePanes")} {
-		findApps(root, 0, apps)
+		if !findApps(root, 0, apps) {
+			ia.inventoryIncomplete = true
+		}
 	}
 	if mdfind := FindTool("mdfind"); mdfind != "" {
 		if out, err := output(ctx, 15*time.Second, mdfind, "-0", "kMDItemContentType == 'com.apple.application-bundle'"); err == nil {
@@ -185,7 +227,11 @@ func collectInstalled(ctx context.Context, home string) *installedApps {
 					apps[string(p)] = true
 				}
 			}
+		} else {
+			ia.inventoryIncomplete = true
 		}
+	} else {
+		ia.inventoryIncomplete = true
 	}
 
 	var list []string
@@ -193,13 +239,24 @@ func collectInstalled(ctx context.Context, home string) *installedApps {
 		list = append(list, p)
 		ia.names[normName(strings.TrimSuffix(filepath.Base(p), filepath.Ext(p)))] = true
 	}
-	for _, id := range bundleIDs(ctx, list) {
+	ids, complete := bundleIDs(ctx, list)
+	if !complete {
+		ia.inventoryIncomplete = true
+	}
+	for _, id := range ids {
 		ia.addID(id)
 	}
 	// Background helpers without an app of their own.
 	for _, dir := range []string{"/Library/LaunchAgents", "/Library/LaunchDaemons", filepath.Join(home, "Library", "LaunchAgents")} {
-		for _, p := range children(dir) {
-			if id := strings.TrimSuffix(filepath.Base(p), ".plist"); bundleIDRe.MatchString(id) {
+		entries, err := readDirUnsorted(dir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				ia.inventoryIncomplete = true
+			}
+			continue
+		}
+		for _, entry := range entries {
+			if id := strings.TrimSuffix(entry.Name(), ".plist"); bundleIDRe.MatchString(id) {
 				ia.addID(id)
 			}
 		}
@@ -209,20 +266,45 @@ func collectInstalled(ctx context.Context, home string) *installedApps {
 
 // findApps collects .app bundles (and prefpanes) up to 3 levels deep
 // (e.g. /Applications/Utilities/X.app, /Applications/Setapp/X.app).
-func findApps(dir string, depth int, into map[string]bool) {
+// False means a directory was unreadable or beyond that bound, so apps
+// absent from the result must not be presumed uninstalled.
+func findApps(dir string, depth int, into map[string]bool) bool {
 	if depth > 3 {
-		return
+		return false
 	}
-	for _, p := range children(dir) {
+	entries, err := readDirUnsorted(dir)
+	if err != nil {
+		// Optional installation roots need not exist.
+		return os.IsNotExist(err)
+	}
+	complete := true
+	for _, entry := range entries {
+		p := filepath.Join(dir, entry.Name())
+		fi, err := os.Lstat(p)
+		if err != nil {
+			complete = false
+			continue
+		}
 		ext := strings.ToLower(filepath.Ext(p))
 		if ext == ".app" || ext == ".prefpane" {
 			into[p] = true
 			continue
 		}
-		if fi, err := os.Lstat(p); err == nil && fi.IsDir() && !isBundle(p) {
-			findApps(p, depth+1, into)
+		if fi.Mode()&os.ModeSymlink != 0 {
+			// Do not enumerate linked custom installation directories, but
+			// do not mistake the apps they may contain for uninstalled ones.
+			if target, err := os.Stat(p); err != nil || target.IsDir() {
+				complete = false
+			}
+			continue
+		}
+		if fi.IsDir() && !isBundle(p) {
+			if !findApps(p, depth+1, into) {
+				complete = false
+			}
 		}
 	}
+	return complete
 }
 
 // infoPlists returns candidate Info.plist paths of a bundle, covering
@@ -239,15 +321,23 @@ func infoPlists(app string) []string {
 
 // bundleIDs reads CFBundleIdentifier of every bundle via plutil
 // (Info.plist is often binary), in parallel.
-func bundleIDs(ctx context.Context, apps []string) []string {
+func bundleIDs(ctx context.Context, apps []string) ([]string, bool) {
 	plutil := FindTool("plutil")
 	if plutil == "" {
-		return nil
+		return nil, false
 	}
+	return bundleIDsWithReader(ctx, apps, func(pl string) (string, error) {
+		out, err := output(ctx, 5*time.Second, plutil, "-extract", "CFBundleIdentifier", "raw", "-o", "-", "--", pl)
+		return strings.TrimSpace(string(out)), err
+	})
+}
+
+func bundleIDsWithReader(ctx context.Context, apps []string, readID func(string) (string, error)) ([]string, bool) {
 	var (
-		mu  sync.Mutex
-		ids []string
-		wg  sync.WaitGroup
+		mu       sync.Mutex
+		ids      []string
+		wg       sync.WaitGroup
+		complete = true
 	)
 	work := make(chan string)
 	for i := 0; i < parallelism; i++ {
@@ -256,18 +346,28 @@ func bundleIDs(ctx context.Context, apps []string) []string {
 			defer wg.Done()
 			for app := range work {
 				if ctx.Err() != nil {
+					mu.Lock()
+					complete = false
+					mu.Unlock()
 					continue
 				}
+				foundID := false
 				for _, pl := range infoPlists(app) {
 					if _, err := os.Stat(pl); err != nil {
 						continue
 					}
-					out, err := output(ctx, 5*time.Second, plutil, "-extract", "CFBundleIdentifier", "raw", "-o", "-", "--", pl)
-					if id := strings.TrimSpace(string(out)); err == nil && id != "" {
+					id, err := readID(pl)
+					if err == nil && bundleIDRe.MatchString(stripTeam(id)) {
 						mu.Lock()
 						ids = append(ids, id)
 						mu.Unlock()
+						foundID = true
 					}
+				}
+				if !foundID {
+					mu.Lock()
+					complete = false
+					mu.Unlock()
 				}
 			}
 		}()
@@ -277,5 +377,5 @@ func bundleIDs(ctx context.Context, apps []string) []string {
 	}
 	close(work)
 	wg.Wait()
-	return ids
+	return ids, complete
 }

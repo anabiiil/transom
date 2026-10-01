@@ -96,12 +96,12 @@ func TestWindowsGuardAllowsOnlyApprovedAppDataCache(t *testing.T) {
 	windowsWrite(t, filepath.Join(outside, "keep.bin"))
 	windowsWrite(t, filepath.Join(temp, "stale.bin"))
 	g := platformGuard(Guard{Home: home, TempRoots: []string{temp}}, scan.Item{Category: "user-caches"})
-	for _, p := range []string{cache, filepath.Join(cache, "data.bin"), filepath.Join(home, "Documents", "large.bin"), filepath.Join(temp, "stale.bin")} {
+	for _, p := range []string{cache, filepath.Join(cache, "data.bin")} {
 		if _, err := g.Check(p); err != nil {
 			t.Errorf("approved %q: %v", p, err)
 		}
 	}
-	for _, p := range []string{home, filepath.Dir(home), filepath.Join(home, "Documents"), filepath.Join(home, "AppData"), filepath.Join(home, "AppData", "Local"), filepath.Join(home, "AppData", "Roaming"), filepath.Dir(cache), state, temp, filepath.Join(outside, "keep.bin")} {
+	for _, p := range []string{home, filepath.Dir(home), filepath.Join(home, "Documents"), filepath.Join(home, "Documents", "large.bin"), filepath.Join(temp, "stale.bin"), filepath.Join(home, "AppData"), filepath.Join(home, "AppData", "Local"), filepath.Join(home, "AppData", "Roaming"), filepath.Dir(cache), state, temp, filepath.Join(outside, "keep.bin")} {
 		if got, err := g.Check(p); err == nil {
 			t.Errorf("protected %q accepted as %q", p, got)
 		}

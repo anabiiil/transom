@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"transom/internal/safety"
 )
 
 // appleCacheNames are Apple-owned folders in ~/Library/Caches without a
@@ -55,6 +57,11 @@ func scanUserCaches(ctx context.Context, e *Env) ([]Item, error) {
 		if owned[name] || appleCacheNames[name] || strings.HasPrefix(name, "com.apple.") {
 			continue
 		}
+		// Updater caches can contain the running application itself. The
+		// shared safety check preserves those and embedded installations.
+		if safety.CheckCleanup(ctx, p, e.Home, runtime.GOOS) != nil {
+			continue
+		}
 		paths = append(paths, p)
 	}
 	return entryItems(e.sizePaths(ctx, paths), baseLabel), nil
@@ -74,7 +81,10 @@ func scanTempFiles(ctx context.Context, e *Env) ([]Item, error) {
 		// Never sweep a system-wide TEMP override or another user's folder.
 		dir = windowsTempDir(e.Home)
 	}
-	cutoff := time.Now().Add(-24 * time.Hour)
+	return scanTempFilesIn(ctx, e, dir, time.Now().Add(-24*time.Hour))
+}
+
+func scanTempFilesIn(ctx context.Context, e *Env, dir string, cutoff time.Time) ([]Item, error) {
 	var paths []string
 	for _, p := range children(dir) {
 		name := filepath.Base(p)
@@ -84,6 +94,9 @@ func scanTempFiles(ctx context.Context, e *Env) ([]Item, error) {
 		fi, err := os.Lstat(p)
 		if err != nil || !(fi.Mode().IsRegular() || fi.IsDir()) {
 			continue // sockets, pipes, symlinks: live plumbing, tiny anyway
+		}
+		if safety.CheckCleanup(ctx, p, e.Home, runtime.GOOS) != nil {
+			continue
 		}
 		paths = append(paths, p)
 	}

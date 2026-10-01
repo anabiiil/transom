@@ -32,6 +32,10 @@ embedded web control panel, and a native app window on macOS and Windows.
   before it's touched: nothing outside your home folder or a safe temp
   directory, never `$HOME` itself or a top-level folder like Desktop or
   Documents, never a symlink target.
+- **Applications and editor data are protected.** Cache cleanup keeps app
+  installations, updater staging, VS Code settings, extensions and unsaved-file
+  backups. The same protection applies to portable editors and old scan results
+  on macOS and Windows.
 
 ## Features
 

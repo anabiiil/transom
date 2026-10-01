@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"transom/internal/safety"
 )
 
 // visitFunc is called for every entry the walker meets (concurrently —
@@ -20,7 +22,11 @@ type visitFunc func(dir string, siblings map[string]bool, name string, fi fs.Fil
 // unreadable directories silently.
 func walkTree(ctx context.Context, roots []string, maxDepth int, sem chan struct{}, prog *Progress, visit visitFunc) {
 	var wg sync.WaitGroup
+	home, _ := os.UserHomeDir()
 	for _, r := range roots {
+		if isBundle(filepath.Base(r)) || safety.ProtectedLocation(r, home, runtime.GOOS) {
+			continue
+		}
 		if fi, err := os.Lstat(r); err != nil || !fi.IsDir() || isReparse(fi) || !safeReadPath(r) {
 			continue
 		}
@@ -30,7 +36,7 @@ func walkTree(ctx context.Context, roots []string, maxDepth int, sem chan struct
 }
 
 func walkDir(ctx context.Context, dir string, depth, maxDepth int, sem chan struct{}, prog *Progress, visit visitFunc, wg *sync.WaitGroup) {
-	if ctx.Err() != nil || depth > maxDepth {
+	if ctx.Err() != nil || depth > maxDepth || safety.IsApplicationDir(dir) {
 		return
 	}
 	entries, err := readDirUnsorted(dir)

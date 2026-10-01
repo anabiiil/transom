@@ -12,9 +12,11 @@ import (
 
 func platformGuard(g Guard, it scan.Item) Guard {
 	g.CacheRoots = scan.WindowsPaths(g.Home, it.Category)
-	g.RequireCacheRoot = it.Category == "app-leftovers"
+	g.RequireCacheRoot = it.Category == "app-leftovers" || it.Category == "user-caches"
 	return g
 }
+
+func platformValidate(context.Context, string, string, scan.Item) error { return nil }
 
 // Windows never converts a trash-mode file request to permanent deletion.
 func permanentRemoval(mode string, _ scan.Item) bool { return mode == ModeDelete }

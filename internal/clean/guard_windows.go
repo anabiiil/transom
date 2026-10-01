@@ -240,7 +240,7 @@ func DefaultGuard() (Guard, error) {
 // profile, AppData and volume containers. AppData removal is restricted to
 // the scanner's approved caches and verified orphan package data. Application
 // state never passes merely because it is beneath the user's home.
-func (g Guard) Check(p string) (string, error) {
+func (g Guard) checkPath(p string) (string, error) {
 	if err := validateWindowsPath(p); err != nil {
 		return "", err
 	}

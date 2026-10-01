@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"transom/internal/safety"
 )
 
 // WindowsRecycleBinPath identifies the native Recycle Bin operation. It is
@@ -27,6 +29,10 @@ func windowsTempDir(home string) string {
 // guard. It never returns an app profile, AppData container, installed package
 // folder, operating-system folder or another user's temporary directory.
 func WindowsPaths(home, category string) []string {
+	return windowsPaths(context.Background(), home, category)
+}
+
+func windowsPaths(ctx context.Context, home, category string) []string {
 	local := windowsAppData(home, "LOCALAPPDATA", "Local")
 	roaming := windowsAppData(home, "APPDATA", "Roaming")
 	var paths []string
@@ -84,6 +90,20 @@ func WindowsPaths(home, category string) []string {
 		// place in the cleanup allowlist.
 		paths = windowsPackageLeftovers(home, windowsPackageCount)
 	}
+	if category == "user-caches" || category == "temp-files" {
+		// A known cache location can still contain an update or portable
+		// application. Never hand such a parent directory to cleanup.
+		var safe []string
+		for _, p := range paths {
+			if ctx.Err() != nil {
+				break
+			}
+			if safety.CheckCleanup(ctx, p, home, "windows") == nil {
+				safe = append(safe, p)
+			}
+		}
+		paths = safe
+	}
 	return paths
 }
 
@@ -129,7 +149,7 @@ func windowsPackageCaches(home string) []pkgCache {
 }
 
 func windowsItems(ctx context.Context, e *Env, category string) []Item {
-	paths := WindowsPaths(e.Home, category)
+	paths := windowsPaths(ctx, e.Home, category)
 	return entryItems(e.sizePaths(ctx, paths), func(s sized) string {
 		for _, root := range []string{windowsAppData(e.Home, "LOCALAPPDATA", "Local"), windowsAppData(e.Home, "APPDATA", "Roaming")} {
 			if rel, err := filepath.Rel(root, s.path); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {

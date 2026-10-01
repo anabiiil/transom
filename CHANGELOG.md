@@ -2,6 +2,20 @@
 
 All notable changes to Transom. Versions follow [semantic versioning](https://semver.org).
 
+## 0.2.1 — 2026-10-01
+
+### Fixed
+
+- Preserve VS Code updater staging, application bundles and portable desktop
+  installations when cleaning caches, temporary folders or old downloads.
+- Protect editor settings, extensions, workspace state and unsaved-file
+  backups on macOS and Windows, including relocated profiles and portable data.
+- Recheck application protection immediately before trashing or deleting,
+  including items from an earlier scan. Cache items must stay inside their
+  platform's cache locations; bundled dependencies are never project junk.
+- Preserve macOS application leftovers when ownership cannot be verified,
+  and recheck installed applications before cleaning a previously orphaned entry.
+
 ## 0.2.0 — 2026-10-01
 
 ### Added

@@ -129,7 +129,7 @@ func within(p, root string) bool {
 // be "/", $HOME, one of $HOME's standard folders, a temp root, or an
 // ancestor of $HOME. Outside $HOME and the temp roots, only a
 // dependency folder strictly inside one of g.ProjectRoots passes.
-func (g Guard) Check(p string) (string, error) {
+func (g Guard) checkPath(p string) (string, error) {
 	if p == "" {
 		return "", errors.New("empty path")
 	}
@@ -202,6 +202,18 @@ func (g Guard) Check(p string) (string, error) {
 		}
 		if err := checkProjectRoot(resolved, g.ProjectRoots); err != nil {
 			return "", err
+		}
+	}
+	if g.RequireCacheRoot {
+		allowed := false
+		for _, root := range g.CacheRoots {
+			if root != "" && filepath.IsAbs(root) && within(resolved, resolveDir(root)) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return "", fmt.Errorf("path is not in this category's cleanup locations: %s", p)
 		}
 	}
 	return resolved, nil

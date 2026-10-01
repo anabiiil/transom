@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"transom/internal/config"
+	"transom/internal/safety"
 )
 
 // Env is what every scanner gets: the home directory it works under,
@@ -123,6 +124,13 @@ func Run(ctx context.Context, ids []string, opts Options, prog *Progress) (*Resu
 		}
 		prog.setCategory(d.ID)
 		items, _ := d.scan(ctx, env)
+		kept := items[:0]
+		for _, it := range items {
+			if it.Kind == KindCommand || safety.CheckCleanup(ctx, it.Path, home, runtime.GOOS) == nil {
+				kept = append(kept, it)
+			}
+		}
+		items = kept
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

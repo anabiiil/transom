@@ -23,6 +23,11 @@ macOS-specific paths and commands; the JSON API is unchanged.
    children that are standard folders (Desktop, Documents, Downloads, Library, Pictures,
    Movies, Music, Applications, Public), must not be `/`, and must not contain `..`.
    Never follow symlinks while deleting (remove the link, not the target).
+   Application installations, editor settings/extensions/backups, and folders
+   containing them are preserved regardless of category. Cleanup rechecks this
+   independently of scanning, so an older scan cannot remove them. Cache items
+   must belong to the platform's cache locations. An incomplete inspection
+   preserves the folder instead of treating it as disposable.
 5. **Risk levels** on every item: `safe` (regenerated automatically: caches, logs,
    DerivedData), `review` (probably unwanted but user data-ish: stale node_modules,
    old downloads, leftovers), `caution` (user files: large files, duplicates).
@@ -104,7 +109,7 @@ Sizes are bytes. The UI formats them (base 1000, like Finder).
 
 | id | group | risk | what |
 |---|---|---|---|
-| `user-caches` | system | safe | `~/Library/Caches/*` (one item per app folder) |
+| `user-caches` | system | safe | `~/Library/Caches/*` (one item per app folder), excluding editor/updater state and folders containing applications |
 | `user-logs` | system | safe | `~/Library/Logs/*`, `~/Library/Logs/DiagnosticReports` |
 | `temp-files` | system | safe | `$TMPDIR` entries older than 1 day |
 | `trash` | system | review | `~/.Trash` contents (clean = permanent delete) |
@@ -118,7 +123,7 @@ Sizes are bytes. The UI formats them (base 1000, like Finder).
 | `large-files` | files | caution | files ≥ `largeMinMB` under ~ (excluding ~/Library, dependency dirs) |
 | `old-downloads` | files | review | `~/Downloads` items older than 90 days |
 | `duplicates` | files | caution | identical files ≥ 1 MB in Desktop/Documents/Downloads (size → partial hash → full hash); keep newest, list the others |
-| `app-leftovers` | files | review | `~/Library/{Application Support,Caches,Containers,Preferences,Saved Application State}` entries whose bundle id / name matches no installed app in /Applications, ~/Applications, /System/Applications |
+| `app-leftovers` | files | review | Conservative bundle-ID entries in `~/Library/{Application Support,Caches,Containers,Preferences,Saved Application State}` only after complete installed-app inventory; ownership is rechecked before cleanup |
 
 ## Windows adaptations
 
