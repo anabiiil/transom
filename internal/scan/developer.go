@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 func scanXcode(ctx context.Context, e *Env) ([]Item, error) {
@@ -38,6 +39,9 @@ type pkgCache struct{ label, path string }
 // module cache (~/go/pkg/mod) is deliberately absent: it's read-only on
 // disk and needs `go clean -modcache`.
 func packageCaches(home string) []pkgCache {
+	if runtime.GOOS == "windows" {
+		return windowsPackageCaches(home)
+	}
 	lc := filepath.Join(home, "Library", "Caches")
 	caches := []pkgCache{
 		{"npm", filepath.Join(home, ".npm", "_cacache")},
@@ -69,7 +73,7 @@ func scanPackageCaches(ctx context.Context, e *Env) ([]Item, error) {
 	label := map[string]string{}
 	var paths []string
 	for _, c := range caches {
-		if fi, err := os.Lstat(c.path); err != nil || !fi.IsDir() {
+		if fi, err := os.Lstat(c.path); err != nil || !fi.IsDir() || isReparse(fi) || !safeReadPath(c.path) {
 			continue
 		}
 		if _, dup := label[c.path]; dup {
@@ -81,6 +85,14 @@ func scanPackageCaches(ctx context.Context, e *Env) ([]Item, error) {
 	items := entryItems(e.sizePaths(ctx, paths), func(s sized) string { return label[s.path] })
 	for i := range items {
 		items[i].Note = "Re-downloaded when needed"
+	}
+	return items, nil
+}
+
+func scanVisualStudio(ctx context.Context, e *Env) ([]Item, error) {
+	items := windowsItems(ctx, e, "visual-studio")
+	for i := range items {
+		items[i].Note = "Close Visual Studio before cleaning; rebuilt when Visual Studio starts"
 	}
 	return items, nil
 }

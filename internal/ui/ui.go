@@ -19,11 +19,13 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"os/exec"
 	"path"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"transom/internal/version"
 )
 
 //go:embed all:web
@@ -49,7 +51,8 @@ func startPanel() (srv *http.Server, url string, lastSeen *atomic.Int64, err err
 	}
 	lastSeen = &atomic.Int64{}
 	lastSeen.Store(time.Now().Unix())
-	h := newHandler(token)
+	s := newServer()
+	h := newHandlerWith(token, s)
 	srv = &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			lastSeen.Store(time.Now().Unix())
@@ -57,6 +60,7 @@ func startPanel() (srv *http.Server, url string, lastSeen *atomic.Int64, err err
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	srv.RegisterOnShutdown(s.stop)
 	go srv.Serve(ln)
 	url = fmt.Sprintf("http://%s/?t=%s", ln.Addr().String(), token)
 	return srv, url, lastSeen, nil
@@ -74,7 +78,7 @@ func Run(ctx context.Context, idleExit time.Duration, out io.Writer) error {
 	if out != nil {
 		fmt.Fprintln(out, "Control panel:", url)
 	}
-	if err := exec.Command("open", url).Run(); err != nil && out != nil {
+	if err := openBrowser(url); err != nil && out != nil {
 		fmt.Fprintln(out, "Couldn't open a browser; open the URL above.")
 	}
 	tick := time.NewTicker(10 * time.Second)
@@ -89,6 +93,23 @@ func Run(ctx context.Context, idleExit time.Duration, out io.Writer) error {
 			}
 		}
 	}
+}
+
+// RunDesktop shares the exact browser panel with a native desktop window.
+// The window owns the lifetime of the HTTP server and its scan jobs.
+func RunDesktop(ctx context.Context, window func(context.Context, string) error) error {
+	srv, url, _, err := startPanel()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if srv.Shutdown(shutdown) != nil {
+			_ = srv.Close()
+		}
+	}()
+	return window(ctx, url)
 }
 
 // RunHost serves the panel for the native Transom.app, which runs
@@ -243,6 +264,9 @@ func serveStatic(w http.ResponseWriter, r *http.Request, name string) {
 		http.NotFound(w, r)
 		return
 	}
+	if clean == "index.html" {
+		b = platformHTML(b, runtime.GOOS)
+	}
 	ct, ok := contentTypes[strings.ToLower(path.Ext(clean))]
 	if !ok {
 		ct = "application/octet-stream"
@@ -252,4 +276,13 @@ func serveStatic(w http.ResponseWriter, r *http.Request, name string) {
 	if r.Method == http.MethodGet {
 		w.Write(b)
 	}
+}
+
+func platformHTML(b []byte, goos string) []byte {
+	name := map[string]string{"darwin": "macOS", "windows": "Windows", "linux": "Linux"}[goos]
+	if name == "" {
+		name = goos
+	}
+	return []byte(strings.NewReplacer("{{platform}}", goos, "{{platformName}}", name,
+		"{{version}}", version.Number).Replace(string(b)))
 }

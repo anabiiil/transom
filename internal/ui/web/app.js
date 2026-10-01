@@ -11,6 +11,10 @@
 'use strict';
 
 const token = new URLSearchParams(location.search).get('t') || '';
+const isWindows = document.documentElement.dataset.platform === 'windows';
+const computerName = isWindows ? 'PC' : 'Mac';
+const fileManager = isWindows ? 'File Explorer' : 'Finder';
+const trashName = isWindows ? 'Recycle Bin' : 'Trash';
 
 /* ── plumbing ──────────────────────────────────────────────── */
 async function api(path, body) {
@@ -142,8 +146,8 @@ function fmtElapsed(ms) {
 // middle-elided path display.
 function splitPath(p) {
   p = String(p || '');
-  const trimmed = p.replace(/\/+$/, '');
-  const i = trimmed.lastIndexOf('/');
+  const trimmed = p.replace(isWindows ? /[\\/]+$/ : /\/+$/, '');
+  const i = Math.max(trimmed.lastIndexOf('/'), isWindows ? trimmed.lastIndexOf('\\') : -1);
   if (i <= 0) return ['', p];
   return [p.slice(0, i), p.slice(i)];
 }
@@ -196,8 +200,8 @@ function riskBadge(r) {
 
 /* ── state ─────────────────────────────────────────────────── */
 const GROUPS = [
-  { id: 'system',    name: 'System Junk', sub: 'Caches, logs, temporary files, Mail downloads and the Trash' },
-  { id: 'developer', name: 'Developer',   sub: 'Xcode, simulators, package-manager caches, Homebrew and Docker' },
+  { id: 'system',    name: 'System Junk', sub: isWindows ? 'App caches, logs, temporary files and the Recycle Bin' : 'Caches, logs, temporary files, Mail downloads and the Trash' },
+  { id: 'developer', name: 'Developer',   sub: isWindows ? 'Visual Studio, package-manager caches and Docker' : 'Xcode, simulators, package-manager caches, Homebrew and Docker' },
   { id: 'projects',  name: 'Projects',    sub: 'Dependency folders in projects you haven\'t touched lately' },
   { id: 'files',     name: 'Files',       sub: 'Large and old files, duplicates, and leftovers of removed apps' },
 ];
@@ -404,7 +408,7 @@ function busy(label) {
 
 /* ── router ────────────────────────────────────────────────── */
 const TITLES = {
-  overview: ['Overview', 'Scan your Mac and see what can safely go'],
+  overview: ['Overview', `Scan your ${computerName} and see what can safely go`],
   system: [GROUP_BY_ID.system.name, GROUP_BY_ID.system.sub],
   developer: [GROUP_BY_ID.developer.name, GROUP_BY_ID.developer.sub],
   projects: [GROUP_BY_ID.projects.name, GROUP_BY_ID.projects.sub],
@@ -735,7 +739,7 @@ function catBodyHTML(c) {
     for (const [, items] of ordered) {
       if (shown >= limit) break;
       setNo++;
-      const name = splitPath(items[0].path)[1].replace(/^\//, '') || items[0].label;
+      const name = splitPath(items[0].path)[1].replace(isWindows ? /^[\\/]/ : /^\//, '') || items[0].label;
       const size = items.reduce((s, x) => s + x.size, 0);
       html += `<div class="dup-head"><span>Set ${setNo}</span><span class="nm" title="${esc(name)}">${esc(name)}</span>
         <span class="r">${plural(items.length, 'extra copy', 'extra copies')} · ${fmtSize(size)}</span></div>`;
@@ -768,7 +772,7 @@ function itemHTML(it, c) {
     <div class="item" data-id="${esc(it.id)}">
       <input type="checkbox" class="cbx" id="${cid}" data-item="${esc(it.id)}">
       <label for="${cid}" class="item-main">
-        <span class="item-label"><span class="lt">${esc(it.label || t.replace(/^\//, ''))}</span>
+        <span class="item-label"><span class="lt">${esc(it.label || t.replace(isWindows ? /^[\\/]/ : /^\//, ''))}</span>
           ${isCmd ? '<span class="kind-cmd">command</span>' : ''}${riskDiff ? riskBadge(it.risk) : ''}</span>
         <span class="path" title="${esc(it.path)}"><span class="h">${esc(h)}</span><span class="t">${esc(t)}</span></span>
         ${it.note ? `<span class="item-note">${esc(it.note)}</span>` : ''}
@@ -776,7 +780,7 @@ function itemHTML(it, c) {
       <span class="item-size">${fmtSize(it.size)}</span>
       <span class="item-time" title="${esc(absTime(it.modTime))}">${esc(relTime(it.modTime))}</span>
       ${isCmd || !it.path ? '<span class="reveal-ph"></span>'
-        : `<button type="button" class="sm reveal" data-reveal="${esc(it.id)}" title="Show in Finder" aria-label="Reveal ${esc(it.label || it.path)} in Finder">Reveal</button>`}
+        : `<button type="button" class="sm reveal" data-reveal="${esc(it.id)}" title="Show in ${fileManager}" aria-label="Reveal ${esc(it.label || it.path)} in ${fileManager}">Reveal</button>`}
     </div>`;
 }
 function toggleCat(id) {
@@ -880,7 +884,7 @@ async function openClean() {
     <fieldset class="modes">
       <legend>How</legend>
       <label class="mode-opt"><input type="radio" name="clean-mode" value="trash" checked>
-        <span><span class="ct">Move to Trash (recoverable)</span><span class="ch">Put back from the Trash in Finder if you change your mind.</span></span></label>
+        <span><span class="ct">Move to ${trashName} (recoverable)</span><span class="ch">Restore from the ${trashName} in ${fileManager} if you change your mind.</span></span></label>
       <label class="mode-opt del"><input type="radio" name="clean-mode" value="delete">
         <span><span class="ct">Delete permanently</span><span class="ch">Frees the space right away. This can't be undone.</span></span></label>
     </fieldset>`;
@@ -889,10 +893,10 @@ async function openClean() {
       (large files or duplicates), not regenerable junk. Check them before continuing.</span></div>`;
   }
   if (inTrash) {
-    body += `<div class="warn">${GLYPH.warn}<span>${plural(inTrash, 'item')} already in the Trash will be <b>deleted permanently</b> whichever option you pick.</span></div>`;
+    body += `<div class="warn">${GLYPH.warn}<span>${isWindows ? 'Emptying the Recycle Bin deletes all of its contents permanently. Select Delete permanently to include it.' : `${plural(inTrash, 'item')} already in the Trash will be <b>deleted permanently</b> whichever option you pick.`}</span></div>`;
   }
   if (cmds) {
-    body += `<div class="modal-detail">${plural(cmds, 'item runs a cleanup command', 'items run cleanup commands')} (like <span class="mono">brew cleanup</span>); what they remove can't be moved to the Trash.</div>`;
+    body += `<div class="modal-detail">${plural(cmds, 'item runs a cleanup command', 'items run cleanup commands')}; what they remove can't be moved to the ${trashName}.</div>`;
   }
   body += `
     <div class="modal-checks" id="ack-wrap" hidden>
@@ -925,14 +929,14 @@ async function openClean() {
         const reasons = [];
         if (mode === 'delete') reasons.push('deleted items can\'t be recovered');
         if (caution) reasons.push('Caution items are my own files');
-        if (inTrash) reasons.push('Trash contents are deleted permanently');
+        if (inTrash) reasons.push(`${trashName} contents are deleted permanently`);
         const hint = reasons.join('; ');
         card.querySelector('#ack-hint').textContent = hint ? hint[0].toUpperCase() + hint.slice(1) + '.' : '';
         const del = mode === 'delete';
         icon.classList.toggle('danger', del);
         icon.innerHTML = del ? GLYPH.warn : GLYPH.clean;
         if (dry && dryMode === mode) {
-          confirmBtn.textContent = del ? `Delete ${plural(dry.removed, 'item')} permanently` : `Move ${plural(dry.removed, 'item')} to Trash`;
+          confirmBtn.textContent = del ? `Delete ${plural(dry.removed, 'item')} permanently` : `Move ${plural(dry.removed, 'item')} to ${trashName}`;
           confirmBtn.className = del ? 'danger' : 'primary';
           est.hidden = false;
         } else {
@@ -940,7 +944,7 @@ async function openClean() {
           confirmBtn.className = 'primary';
           est.hidden = true;
         }
-        confirmBtn.disabled = need && !ack.checked;
+        confirmBtn.disabled = (need && !ack.checked) || (isWindows && inTrash > 0 && mode !== 'delete');
       };
       card.querySelectorAll('input[name=clean-mode]').forEach(r => r.addEventListener('change', () => {
         mode = r.value;
@@ -954,14 +958,15 @@ async function openClean() {
       if (dry && dryMode === mode) return { mode, ids };   // step 2: go
       // Step 1: dry run for the exact estimate, then ask again.
       const label = confirmBtn.textContent;
+      const requestedMode = mode;
       confirmBtn.disabled = true;
       confirmBtn.innerHTML = '<span class="spin sm" aria-hidden="true"></span>Checking…';
       try {
-        dry = await api('/api/clean', { items: ids, mode, dryRun: true });
-        dryMode = mode;
+        dry = await api('/api/clean', { items: ids, mode: requestedMode, dryRun: true });
+        dryMode = requestedMode;
       } catch (e) {
         confirmBtn.textContent = label;
-        confirmBtn.disabled = false;
+        ctx.update();
         toast(`Dry run failed: ${e.message}`, { bad: true });
         return false;
       }
@@ -979,7 +984,7 @@ async function openClean() {
   await runClean(result.ids, result.mode);
 }
 async function runClean(ids, mode) {
-  busy(mode === 'delete' ? `Deleting ${plural(ids.length, 'item')}…` : `Moving ${plural(ids.length, 'item')} to the Trash…`);
+  busy(mode === 'delete' ? `Deleting ${plural(ids.length, 'item')}…` : `Moving ${plural(ids.length, 'item')} to the ${trashName}…`);
   let r;
   try {
     r = await api('/api/clean', { items: ids, mode, dryRun: false });
@@ -997,7 +1002,7 @@ async function runClean(ids, mode) {
     for (const id of done) { itemIndex.delete(id); selected.delete(id); }
     recomputeTotals();
   }
-  const verb = mode === 'delete' ? 'deleted' : 'moved to the Trash';
+  const verb = mode === 'delete' ? 'deleted' : `moved to the ${trashName}`;
   toast(`Freed ${fmtSize(r.freed)} — ${plural(r.removed, 'item')} ${verb}`, { failed });
   renderAll();
   loadDisk();
@@ -1031,7 +1036,7 @@ async function loadHistory() {
       <td class="nw" title="${esc(absTime(h.at))}">${esc(relTime(h.at))}<span class="abs">${esc(absTime(h.at))}</span></td>
       <td class="num nw"><b>${fmtSize(h.freed)}</b></td>
       <td class="num">${fmtInt(h.removed)}</td>
-      <td>${h.mode === 'delete' ? '<span class="badge mode-delete">Deleted</span>' : '<span class="badge mode-trash">Trash</span>'}</td>
+      <td>${h.mode === 'delete' ? '<span class="badge mode-delete">Deleted</span>' : `<span class="badge mode-trash">${trashName}</span>`}</td>
       <td>${(h.categories || []).map(c => `<span class="chip">${esc(catName(c))}</span>`).join('')}</td>
     </tr>`).join('')}</tbody></table>`;
 }
@@ -1051,7 +1056,9 @@ function parseRootsList(raw) {
 }
 function isValidRootInput(v) {
   v = String(v || '').trim();
-  return v === '~' || v.startsWith('~/') || v.startsWith('/');
+  if (v === '~' || v.startsWith('~/') || (isWindows && v.startsWith('~\\'))) return true;
+  if (isWindows) return /^[a-z]:[\\/]/i.test(v) || /^\\\\[^\\/]+[\\/][^\\/]+/.test(v);
+  return v.startsWith('/');
 }
 let settingsRoots = null; // lazily loaded from TransomPrefs, kept across page switches
 async function renderSettings() {
@@ -1072,7 +1079,7 @@ async function renderSettings() {
         <p class="muted">Where Transom looks for old node_modules, vendor, .venv and target folders.</p>
         <div class="roots-list" id="roots-list"></div>
         <div class="row roots-add">
-          <input type="text" id="root-input" class="field" placeholder="~/Projects or /absolute/path" aria-label="Add a project folder">
+          <input type="text" id="root-input" class="field" placeholder="${isWindows ? 'C:\\Users\\you\\Projects or D:\\Projects' : '~/Projects or /absolute/path'}" aria-label="Add a project folder">
           <button type="button" class="sm" id="root-add">Add</button>
         </div>
         <div class="warn" id="roots-error" hidden></div>
@@ -1130,7 +1137,7 @@ async function addRootFromInput() {
   err.hidden = true;
   if (!v) return;
   if (!isValidRootInput(v)) {
-    err.textContent = 'Enter an absolute path (starting with /) or a ~/ path.';
+    err.textContent = isWindows ? 'Enter a full folder path, such as C:\\Users\\you\\Projects, or a ~/ path.' : 'Enter an absolute path (starting with /) or a ~/ path.';
     err.hidden = false;
     return;
   }

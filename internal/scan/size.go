@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,15 +39,19 @@ func (a *sizeAcc) touch(t time.Time) {
 // deadlock however deep the tree is.
 func sizeTree(ctx context.Context, path string, sem chan struct{}, prog *Progress) (int64, time.Time) {
 	fi, err := os.Lstat(path)
-	if err != nil {
+	if err != nil || skipSizingEntry(fi) || !safeReadPath(path) {
 		return 0, time.Time{}
 	}
 	prog.AddScanned(1)
-	st := statOf(fi)
+	st := statPath(path, fi)
 	if !fi.IsDir() {
 		return st.alloc, fi.ModTime()
 	}
 	acc := &sizeAcc{newest: fi.ModTime()}
+	if runtime.GOOS == "windows" {
+		acc.touch(st.birth)
+		acc.touch(st.changed)
+	}
 	acc.size.Add(st.alloc)
 	var wg sync.WaitGroup
 	walkSize(ctx, path, acc, sem, prog, &wg)
@@ -65,10 +70,11 @@ func walkSize(ctx context.Context, dir string, acc *sizeAcc, sem chan struct{}, 
 	prog.AddScanned(int64(len(entries)))
 	for _, e := range entries {
 		info, err := e.Info() // lstat semantics: symlinks are not followed
-		if err != nil {
+		if err != nil || skipSizingEntry(info) {
 			continue
 		}
-		st := statOf(info)
+		child := filepath.Join(dir, e.Name())
+		st := statPath(child, info)
 		if !info.IsDir() && st.haveInode && st.nlink > 1 {
 			key := [2]uint64{st.dev, st.ino}
 			if _, dup := acc.links.LoadOrStore(key, struct{}{}); dup {
@@ -77,10 +83,13 @@ func walkSize(ctx context.Context, dir string, acc *sizeAcc, sem chan struct{}, 
 		}
 		acc.size.Add(st.alloc)
 		acc.touch(info.ModTime())
+		if runtime.GOOS == "windows" {
+			acc.touch(st.birth)
+			acc.touch(st.changed)
+		}
 		if !info.IsDir() {
 			continue
 		}
-		child := filepath.Join(dir, e.Name())
 		select {
 		case sem <- struct{}{}:
 			wg.Add(1)
@@ -97,6 +106,9 @@ func walkSize(ctx context.Context, dir string, acc *sizeAcc, sem chan struct{}, 
 
 // readDirUnsorted lists dir without the sort os.ReadDir does.
 func readDirUnsorted(dir string) ([]fs.DirEntry, error) {
+	if !safeReadPath(dir) {
+		return nil, fs.ErrPermission
+	}
 	f, err := os.Open(dir)
 	if err != nil {
 		return nil, err
@@ -135,7 +147,7 @@ func (e *Env) sizePaths(ctx context.Context, paths []string) []sized {
 					continue
 				}
 				fi, err := os.Lstat(p)
-				if err != nil {
+				if err != nil || skipSizingEntry(fi) || !safeReadPath(p) {
 					continue
 				}
 				size, newest := sizeTree(ctx, p, e.sem, e.Prog)

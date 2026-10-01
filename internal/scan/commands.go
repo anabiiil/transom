@@ -9,18 +9,26 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"transom/internal/proc"
 )
 
 // Commands is the allowlist of cleanup commands, keyed by category id.
 // A command item is executed only by looking its category up here — the
 // item's own path/label is display text and is never executed.
-var Commands = map[string][]string{
-	"simulators": {"xcrun", "simctl", "delete", "unavailable"},
-	"homebrew":   {"brew", "cleanup", "-s"},
-	"docker":     {"docker", "system", "prune", "-f"},
+var Commands = platformCommands(runtime.GOOS)
+
+func platformCommands(goos string) map[string][]string {
+	commands := map[string][]string{"docker": {"docker", "system", "prune", "-f"}}
+	if goos != "windows" {
+		commands["simulators"] = []string{"xcrun", "simctl", "delete", "unavailable"}
+		commands["homebrew"] = []string{"brew", "cleanup", "-s"}
+	}
+	return commands
 }
 
 // toolDirs are searched after $PATH: a GUI app (Transom.app) inherits
@@ -39,6 +47,18 @@ func FindTool(name string) string {
 			return abs
 		}
 	}
+	if runtime.GOOS == "windows" {
+		if name == "docker" {
+			programFiles := os.Getenv("ProgramFiles")
+			if programFiles != "" && filepath.IsAbs(programFiles) {
+				p := filepath.Join(programFiles, "Docker", "Docker", "resources", "bin", "docker.exe")
+				if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+					return p
+				}
+			}
+		}
+		return ""
+	}
 	for _, d := range toolDirs {
 		p := filepath.Join(d, name)
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
@@ -51,6 +71,9 @@ func FindTool(name string) string {
 // ToolEnv is the environment tool commands run with: quiet Homebrew
 // (no auto-update, no analytics, no hints).
 func ToolEnv() []string {
+	if runtime.GOOS == "windows" {
+		return os.Environ()
+	}
 	return append(os.Environ(),
 		"HOMEBREW_NO_AUTO_UPDATE=1",
 		"HOMEBREW_NO_ANALYTICS=1",
@@ -64,6 +87,7 @@ func output(ctx context.Context, timeout time.Duration, bin string, args ...stri
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	c := exec.CommandContext(ctx, bin, args...)
+	proc.HideWindow(c)
 	c.Env = ToolEnv()
 	c.Stdin = nil
 	return c.Output()

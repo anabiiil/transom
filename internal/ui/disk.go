@@ -1,3 +1,5 @@
+//go:build darwin
+
 package ui
 
 import (
@@ -10,14 +12,6 @@ import (
 	"syscall"
 	"time"
 )
-
-// DiskInfo is /api/disk's data.
-type DiskInfo struct {
-	Total  int64  `json:"total"`
-	Free   int64  `json:"free"`
-	Used   int64  `json:"used"`
-	Volume string `json:"volume"`
-}
 
 var (
 	volumeOnce sync.Once

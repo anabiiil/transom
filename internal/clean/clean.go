@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"transom/internal/config"
+	"transom/internal/proc"
 	"transom/internal/scan"
 )
 
@@ -101,7 +101,7 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 	// Parents before children: once a folder is gone, items inside it
 	// (a duplicate inside an old download folder, say) are gone too and
 	// their bytes were already counted with the folder.
-	sort.SliceStable(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	sort.SliceStable(files, func(i, j int) bool { return pathKey(files[i].Path) < pathKey(files[j].Path) })
 	var done []string // paths removed so far (or that would be)
 	cats := []string{}
 	catSeen := map[string]bool{}
@@ -125,7 +125,7 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 		}
 		covered := false
 		for _, d := range done {
-			if it.Path == d || strings.HasPrefix(it.Path, d+"/") {
+			if platformCovered(it.Path, d, req.DryRun) {
 				covered = true
 				break
 			}
@@ -140,6 +140,7 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 			// $HOME: allow exactly the roots this scan searched.
 			g.ProjectRoots = res.Roots
 		}
+		g = platformGuard(g, it)
 		target, err := g.Check(it.Path)
 		if err != nil {
 			fail(it, err)
@@ -155,7 +156,7 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 		if !req.DryRun {
 			// Trash items are already in the Trash: "cleaning" them
 			// means emptying them for good.
-			if mode == ModeDelete || it.Category == "trash" {
+			if permanentRemoval(mode, it) {
 				err = os.RemoveAll(target) // removes symlinks, never follows them
 			} else {
 				err = moveToTrash(target, guard.Home)
@@ -170,6 +171,18 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 	}
 
 	for _, it := range cmds {
+		if ctx.Err() != nil {
+			fail(it, ctx.Err())
+			continue
+		}
+		if handled, err := platformCommand(ctx, it, mode, req.DryRun); handled {
+			if err != nil {
+				fail(it, err)
+			} else {
+				succeed(it, it.Size)
+			}
+			continue
+		}
 		argv, ok := scan.Commands[it.Category]
 		if !ok || len(argv) == 0 {
 			fail(it, errors.New("no cleanup command for this category"))
@@ -206,6 +219,7 @@ func runCommand(ctx context.Context, bin string, args []string) error {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	c := exec.CommandContext(ctx, bin, args...)
+	proc.HideWindow(c)
 	c.Env = scan.ToolEnv()
 	var stderr bytes.Buffer
 	c.Stderr = &stderr
@@ -220,36 +234,6 @@ func runCommand(ctx context.Context, bin string, args []string) error {
 		return fmt.Errorf("%s %s: %v", filepath.Base(bin), strings.Join(args, " "), err)
 	}
 	return nil
-}
-
-// moveToTrash moves p into ~/.Trash, renaming on a name clash
-// ("name 2026-09-26 14.03.07.ext"). An item on another volume (EXDEV)
-// goes into that volume's own trash, /Volumes/X/.Trashes/<uid>, as
-// Finder does. If that isn't possible (or the rename is refused),
-// Finder is asked to trash it.
-func moveToTrash(p, home string) error {
-	trash := filepath.Join(resolveDir(home), ".Trash")
-	if err := os.MkdirAll(trash, 0o700); err != nil {
-		return err
-	}
-	err := os.Rename(p, trashName(trash, filepath.Base(p), time.Now()))
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, syscall.EXDEV) {
-		if vt, verr := volumeTrashDir(p); verr == nil {
-			if rerr := os.Rename(p, trashName(vt, filepath.Base(p), time.Now())); rerr == nil {
-				return nil
-			}
-		}
-	}
-	if errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
-		if ferr := finderTrash(p); ferr != nil {
-			return fmt.Errorf("move to Trash: %v; Finder: %v", err, ferr)
-		}
-		return nil
-	}
-	return err
 }
 
 // trashName picks a free name in the trash for base.
@@ -274,27 +258,4 @@ func trashName(trash, base string, now time.Time) string {
 			return dest
 		}
 	}
-}
-
-// finderScript trashes the POSIX path given as its first argument. The
-// path is passed through argv, never interpolated into the script.
-var finderScript = []string{
-	"-e", "on run argv",
-	"-e", "set f to POSIX file (item 1 of argv)",
-	"-e", "tell application \"Finder\" to delete (f as alias)",
-	"-e", "end run",
-}
-
-func finderTrash(p string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	args := append(append([]string{}, finderScript...), p)
-	c := exec.CommandContext(ctx, "/usr/bin/osascript", args...)
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
-	c.Stdout = nil
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
-	}
-	return nil
 }

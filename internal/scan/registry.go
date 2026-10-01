@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -53,8 +54,9 @@ var registry = []def{
 
 // Categories returns every category in display order.
 func Categories() []Category {
-	out := make([]Category, len(registry))
-	for i, d := range registry {
+	defs := platformRegistry(runtime.GOOS)
+	out := make([]Category, len(defs))
+	for i, d := range defs {
 		out[i] = d.Category
 	}
 	return out
@@ -62,7 +64,7 @@ func Categories() []Category {
 
 // LookupCategory returns the category with id.
 func LookupCategory(id string) (Category, bool) {
-	for _, d := range registry {
+	for _, d := range platformRegistry(runtime.GOOS) {
 		if d.ID == id {
 			return d.Category, true
 		}
@@ -81,7 +83,7 @@ func Run(ctx context.Context, ids []string, opts Options, prog *Progress) (*Resu
 	}
 	var defs []def
 	if len(ids) == 0 {
-		defs = registry
+		defs = platformRegistry(runtime.GOOS)
 	} else {
 		want := map[string]bool{}
 		for _, id := range ids {
@@ -90,7 +92,7 @@ func Run(ctx context.Context, ids []string, opts Options, prog *Progress) (*Resu
 			}
 			want[id] = true
 		}
-		for _, d := range registry {
+		for _, d := range platformRegistry(runtime.GOOS) {
 			if want[d.ID] {
 				defs = append(defs, d)
 			}
@@ -129,6 +131,39 @@ func Run(ctx context.Context, ids []string, opts Options, prog *Progress) (*Resu
 	}
 	res.recompute()
 	return res, nil
+}
+
+// platformRegistry keeps the original macOS categories and replaces only
+// categories whose meaning or locations differ on Windows.
+func platformRegistry(goos string) []def {
+	if goos != "windows" {
+		return registry
+	}
+	var out []def
+	for _, d := range registry {
+		switch d.ID {
+		case "mail-downloads", "simulators", "homebrew":
+			continue
+		case "user-caches":
+			d.Description = "Known browser and app cache folders in AppData. Personal profiles and settings are kept."
+		case "user-logs":
+			d.Description = "Known app log folders and user crash dumps in AppData."
+		case "temp-files":
+			d.Description = "Entries in your user temporary folder untouched for over a day."
+		case "trash":
+			d.Name = "Recycle Bin"
+			d.Description = "Items in your Recycle Bin on all drives. Emptying it permanently deletes them."
+		case "xcode":
+			d.Category = Category{"visual-studio", "Visual Studio", "developer", "Visual Studio component caches. Close Visual Studio before cleaning; caches are rebuilt when needed.", RiskReview, "xcode"}
+			d.scan = scanVisualStudio
+		case "package-caches":
+			d.Description = "Download and build caches of npm, Yarn, pnpm, Composer, pip, Go, Gradle, NuGet and Bun."
+		case "app-leftovers":
+			d.Description = "Saved data of Store/MSIX packages no longer registered for your account. Generic Win32 app data is kept because its ownership cannot be reliably verified."
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // finish stamps ids/risk on a category's items, drops duplicates and

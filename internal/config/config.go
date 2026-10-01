@@ -1,6 +1,6 @@
-// Package config persists Transom's small amount of state under
-// ~/.transom: UI preferences (config.json) and the clean history
-// (history.json).
+// Package config persists Transom's small amount of state under ~/.transom
+// on Unix and %LOCALAPPDATA%\Transom on Windows: UI preferences (config.json)
+// and the clean history (history.json).
 package config
 
 import (
@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -20,13 +21,24 @@ const MaxHistory = 50
 // mu serializes read-modify-write cycles within this process.
 var mu sync.Mutex
 
-// Dir is ~/.transom (resolved from $HOME at call time).
+// Dir resolves the current user's storage directory at call time:
+// ~/.transom on Unix and %LOCALAPPDATA%\Transom on Windows.
 func Dir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".transom"), nil
+	return configDir(home, runtime.GOOS, os.Getenv("LOCALAPPDATA")), nil
+}
+
+func configDir(home, goos, localAppData string) string {
+	if goos == "windows" {
+		if !filepath.IsAbs(localAppData) {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		return filepath.Join(localAppData, "Transom")
+	}
+	return filepath.Join(home, ".transom")
 }
 
 // Config is config.json.
@@ -97,7 +109,11 @@ func writeJSON(name string, v any) error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	return os.Rename(tmp.Name(), p)
+	if err := replaceFile(tmp.Name(), p); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }
 
 // Load reads config.json (zero value if absent).
@@ -146,7 +162,7 @@ func ParseRoots(value string) ([]string, error) {
 			continue
 		case r == "~":
 			r = home
-		case strings.HasPrefix(r, "~/"):
+		case strings.HasPrefix(r, "~/") || (runtime.GOOS == "windows" && strings.HasPrefix(r, `~\`)):
 			r = filepath.Join(home, r[2:])
 		}
 		if !filepath.IsAbs(r) {

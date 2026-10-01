@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package clean removes items of a scan result — by item id only, after
 // every path passes the guard in this file.
 package clean
@@ -16,20 +18,6 @@ var protectedHomeChildren = []string{
 	"Desktop", "Documents", "Downloads", "Library", "Pictures",
 	"Movies", "Music", "Applications", "Public", ".Trash",
 }
-
-// Guard decides whether a path may be removed. See Check.
-type Guard struct {
-	Home      string   // the user's home directory
-	TempRoots []string // additional allowed roots (temp dirs)
-
-	// ProjectRoots are extra roots (e.g. an external projects volume)
-	// under which ONLY dependency folders may be removed — see
-	// checkProjectRoot. Clean sets them for stale-deps items only.
-	ProjectRoots []string
-}
-
-// DepDirNames are the only base names removable under a project root.
-var DepDirNames = map[string]bool{"node_modules": true, "vendor": true, ".venv": true, "target": true}
 
 // systemDirs may never be, or contain, a project root.
 var systemDirs = []string{

@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -300,6 +303,8 @@ func TestScanCancel(t *testing.T) {
 
 func TestPrefsAndHistory(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	ts := newTestServer(t, nil)
 	if _, env := post(t, ts, "/api/prefs/set", testToken, `{"key":"theme","value":"dark"}`); !env.OK {
 		t.Fatalf("set: %+v", env)
@@ -313,6 +318,71 @@ func TestPrefsAndHistory(t *testing.T) {
 	_, env = post(t, ts, "/api/history", testToken, `{}`)
 	if !env.OK || !bytes.Equal(bytes.TrimSpace(env.Data), []byte("[]")) {
 		t.Fatalf("history = %+v", env)
+	}
+}
+
+func TestWindowsPageUsesOriginalAssetsAndWindowsCopy(t *testing.T) {
+	b, err := webFS.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(platformHTML(b, "windows"))
+	for _, want := range []string{`data-platform="windows"`, "disk cleanup for Windows", "/static/app.css", "/static/app.js"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	if strings.Contains(page, "{{") || strings.Contains(page, "macOS") {
+		t.Fatal("unresolved platform content")
+	}
+}
+
+func TestDesktopOwnsPanelLifetime(t *testing.T) {
+	var panelURL string
+	wantErr := errors.New("window closed with an error")
+	err := RunDesktop(context.Background(), func(ctx context.Context, address string) error {
+		panelURL = address
+		u, err := url.Parse(address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.NewReader("{}")
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, u.Scheme+"://"+u.Host+"/api/categories", body)
+		req.Header.Set(TokenHeader, u.Query().Get("t"))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("desktop API returned %d", resp.StatusCode)
+		}
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("window error lost: %v", err)
+	}
+	client := &http.Client{Timeout: time.Second}
+	if resp, err := client.Get(panelURL); err == nil {
+		resp.Body.Close()
+		t.Fatal("panel server still running after desktop window closed")
+	}
+}
+
+func TestExpandRootsHomeAndRelativePaths(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, err := expandRoots([]string{"~", "~/Projects"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roots) != 2 || roots[0] != home || roots[1] != filepath.Join(home, "Projects") {
+		t.Fatalf("roots = %v", roots)
+	}
+	if _, err := expandRoots([]string{"Projects"}); err == nil {
+		t.Fatal("relative root accepted")
 	}
 }
 

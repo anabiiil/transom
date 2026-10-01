@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 
@@ -77,6 +79,13 @@ func printReport(res *scan.Result, verbose bool) {
 // absRoots makes --root values absolute (the guard ignores relative roots).
 func absRoots(opts *scan.Options) error {
 	for i, r := range opts.Roots {
+		if r == "~" || strings.HasPrefix(r, "~/") || (runtime.GOOS == "windows" && strings.HasPrefix(r, `~\`)) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			r = filepath.Join(home, strings.TrimLeft(strings.TrimPrefix(r, "~"), `/\`))
+		}
 		abs, err := filepath.Abs(r)
 		if err != nil {
 			return err

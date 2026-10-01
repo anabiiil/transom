@@ -1,8 +1,14 @@
 # Transom — internal contract
 
-Transom is a macOS disk cleaner, a sibling of Mullion (`../mullion`): one Go binary
+Transom is a macOS and Windows disk cleaner, a sibling of Mullion (`../mullion`): one Go binary
 (cobra CLI, module `transom`), an embedded web control panel served on 127.0.0.1,
 and a native `Transom.app` (AppKit + WKWebView) that hosts the panel.
+
+Windows uses the same embedded panel inside a native WebView2 window,
+distributed as `Transom.exe` (GUI), `transom-cli.exe` (console), a portable
+ZIP and a per-user Setup EXE. Closing its native window stops the loopback
+server and cancels active scans. The platform sections below override
+macOS-specific paths and commands; the JSON API is unchanged.
 
 ## Safety principles (non-negotiable)
 
@@ -113,3 +119,49 @@ Sizes are bytes. The UI formats them (base 1000, like Finder).
 | `old-downloads` | files | review | `~/Downloads` items older than 90 days |
 | `duplicates` | files | caution | identical files ≥ 1 MB in Desktop/Documents/Downloads (size → partial hash → full hash); keep newest, list the others |
 | `app-leftovers` | files | review | `~/Library/{Application Support,Caches,Containers,Preferences,Saved Application State}` entries whose bundle id / name matches no installed app in /Applications, ~/Applications, /System/Applications |
+
+## Windows adaptations
+
+The page carries `data-platform="windows"`; the frontend keeps its original
+markup/styles and uses Windows labels and path validation. `/api/disk` uses
+native volume APIs for the home volume. `/api/reveal` opens File Explorer
+through `SHOpenFolderAndSelectItems`, after the same latest-scan check.
+
+Windows keeps `user-caches`, `user-logs`, `temp-files`, `trash`, `package-caches`,
+`docker`, `stale-deps`, `large-files`, `old-downloads`, `duplicates` and
+`app-leftovers`. `visual-studio` replaces `xcode`; Apple Mail, Homebrew and
+simulator categories are omitted. `app-leftovers` covers only data folders
+under `%LOCALAPPDATA%\Packages` whose valid Store/MSIX package family has
+no registrations for the current user, as reported by the native
+`GetPackagesByPackageFamily` API. Errors preserve the data, installed
+families are excluded, and registration is rechecked before cleanup.
+These items have `review` risk and are never preselected. Generic desktop
+application data is kept because its ownership cannot safely be established.
+
+Cache/log paths are an exact Windows allowlist exposed by
+`scan.WindowsPaths`: browser caches, known app logs/crash dumps, user temp,
+package download/build caches and Visual Studio component caches.
+Application profiles, installed NuGet packages, settings and arbitrary
+AppData folders are excluded. Native Known Folders supply Desktop,
+Documents and Downloads, including redirected locations. All walkers skip
+reparse points/junctions and avoid reading cloud-only file placeholders.
+
+The Windows guard rejects device namespaces, alternate data streams,
+wildcards, parent traversal, reserved device names and trailing-dot/space
+aliases. Comparisons use Windows separators and case rules. It protects
+volume/share roots, system locations, profile folders, Known Folder roots
+and AppData containers. Only explicit cache/orphan-package targets and safe
+selected dependencies inside the scanned project roots can extend the allowed area.
+
+Ordinary `mode: "trash"` uses native `IFileOperation` with recycling/undo
+flags and a progress sink that refuses permanent removal. Files that cannot
+be recycled are failures; there is no permanent-delete fallback. The
+Recycle Bin category is one fixed command item (`Windows Recycle Bin`),
+queried read-only by `SHQueryRecycleBinW` for all drives. Emptying uses
+`SHEmptyRecycleBinW`, requires `mode: "delete"`, and the panel requires a
+separate permanent-deletion acknowledgement. It cannot accept raw paths.
+
+Preferences/history live in `%LOCALAPPDATA%\Transom`. Setup installs into
+`%LOCALAPPDATA%\Programs\Transom`, creates a Start Menu shortcut and registers
+a current-user uninstall entry. Uninstall removes only owned program files,
+leaving preferences/history and unrelated files intact.

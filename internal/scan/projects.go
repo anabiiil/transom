@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -61,7 +62,7 @@ func projectLastTouched(project string) time.Time {
 				continue
 			}
 			fi, err := e.Info()
-			if err != nil {
+			if err != nil || isReparse(fi) {
 				continue
 			}
 			switch {
@@ -88,11 +89,20 @@ func projectLastTouched(project string) time.Time {
 	// Not .git itself, index or FETCH_HEAD: status/fetch touch those.
 	git := filepath.Join(project, ".git")
 	for _, p := range []string{"HEAD", filepath.Join("logs", "HEAD"), "ORIG_HEAD"} {
-		if fi, err := os.Lstat(filepath.Join(git, p)); err == nil {
+		if fi, err := os.Lstat(filepath.Join(git, p)); err == nil && !isReparse(fi) && safeReadPath(filepath.Join(git, p)) {
 			bump(fi.ModTime())
 		}
 	}
 	_ = filepath.WalkDir(filepath.Join(git, "refs", "heads"), func(p string, d fs.DirEntry, err error) error {
+		if err == nil {
+			fi, statErr := d.Info()
+			if statErr != nil || isReparse(fi) || !safeReadPath(p) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
 		if err == nil && !d.IsDir() {
 			if fi, err := d.Info(); err == nil {
 				bump(fi.ModTime())
@@ -143,7 +153,18 @@ func scanStaleDeps(ctx context.Context, e *Env) ([]Item, error) {
 }
 
 func scanLargeFiles(ctx context.Context, e *Env) ([]Item, error) {
-	idx := e.homeIndex(ctx, []string{e.Home})
+	roots := []string{e.Home}
+	if runtime.GOOS == "windows" {
+		folders := WindowsUserFolders(e.Home)
+		for _, name := range []string{"Desktop", "Documents", "Downloads"} {
+			path := folders[name]
+			rel, err := filepath.Rel(e.Home, path)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				roots = append(roots, path)
+			}
+		}
+	}
+	idx := e.homeIndex(ctx, roots)
 	items := make([]Item, 0, len(idx.large))
 	for _, s := range idx.large {
 		items = append(items, Item{

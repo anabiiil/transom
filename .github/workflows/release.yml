@@ -88,7 +88,7 @@ jobs:
           # -c -k --keepParent preserves the code-signature seal and xattrs,
           # unlike zip/Compress-Archive.
           ditto -c -k --keepParent macapp/build/Transom.app "Transom-${TAG}-macos.zip"
-          shasum -a 256 transom-*.tar.gz Transom-*.zip > checksums.txt
+          shasum -a 256 transom-*.tar.gz Transom-*.zip > checksums-macos.txt
 
       - name: Validate Homebrew cask for both architectures
         env:
@@ -113,10 +113,83 @@ jobs:
           path: |
             transom-*.tar.gz
             Transom-*.zip
-            checksums.txt
+            checksums-macos.txt
+
+  build-windows:
+    needs: resolve-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet and test Windows implementation
+        shell: pwsh
+        run: |
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify shared frontend
+        shell: pwsh
+        run: |
+          node --check internal/ui/web/app.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node internal/ui/web_test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Windows desktop, CLI, installers and ZIP packages
+        shell: pwsh
+        run: ./windows/build.ps1 -Version ($env:TAG -replace '^v', '')
+
+      - name: Verify x64 installer and uninstall
+        shell: pwsh
+        run: |
+          $version = $env:TAG -replace '^v', ''
+          $setup = Start-Process -FilePath "dist/Transom-$version-Setup-amd64.exe" -ArgumentList '--quiet' -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Setup failed: $($setup.ExitCode)" }
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs/Transom'
+          if (!(Test-Path "$installed/Transom.exe")) { throw 'Installed desktop EXE is missing' }
+          if (!(Test-Path "$env:APPDATA/Microsoft/Windows/Start Menu/Programs/Transom/Transom.lnk")) { throw 'Start Menu shortcut is missing' }
+          & "$installed/transom-cli.exe" version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed' }
+          Set-Content "$installed/keep-me.txt" 'Unrelated user file'
+          $remove = Start-Process -FilePath "$installed/Uninstall.exe" -ArgumentList '--quiet' -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
+          if (Test-Path "$installed/Transom.exe") { throw 'Uninstall left the desktop EXE' }
+          if (!(Test-Path "$installed/keep-me.txt")) { throw 'Uninstall removed an unrelated file' }
+          $deadline = (Get-Date).AddSeconds(20)
+          while ((Test-Path "$installed/Uninstall.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          if (Test-Path "$installed/Uninstall.exe") { throw 'Uninstaller self-removal failed' }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -File | Where-Object { $_.Extension -in '.zip', '.exe' } | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding utf8 dist/checksums-windows.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.zip
+            dist/*.exe
+            dist/checksums-windows.txt
 
   release:
-    needs: [resolve-release, build-macos]
+    needs: [resolve-release, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -131,7 +204,9 @@ jobs:
           files: |
             transom-*.tar.gz
             Transom-*.zip
-            checksums.txt
+            transom_*_windows_*.zip
+            Transom-*-Setup-*.exe
+            checksums-*.txt
           generate_release_notes: true
 
   homebrew-tap:

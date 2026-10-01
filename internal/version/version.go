@@ -3,4 +3,4 @@ package version
 
 // Number is the release version. It's a var (not a const) so release
 // builds can stamp it: -ldflags "-X transom/internal/version.Number=1.2.3".
-var Number = "0.1.0"
+var Number = "0.2.0"

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -119,6 +120,14 @@ func (ia *installedApps) isLeftover(id string) bool {
 }
 
 func scanAppLeftovers(ctx context.Context, e *Env) ([]Item, error) {
+	if runtime.GOOS == "windows" {
+		items := windowsItems(ctx, e, "app-leftovers")
+		for i := range items {
+			items[i].Label = filepath.Base(items[i].Path) + " (Store/MSIX app data)"
+			items[i].Note = "No package in this family is registered for your Windows account; review saved app data before cleaning"
+		}
+		return items, ctx.Err()
+	}
 	ia := collectInstalled(ctx, e.Home)
 	if len(ia.vendors) == 0 {
 		// Couldn't read a single installed app: everything would look

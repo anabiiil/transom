@@ -26,11 +26,8 @@ type dupFile struct {
 }
 
 func scanDuplicates(ctx context.Context, e *Env) ([]Item, error) {
-	roots := []string{
-		filepath.Join(e.Home, "Desktop"),
-		filepath.Join(e.Home, "Documents"),
-		filepath.Join(e.Home, "Downloads"),
-	}
+	folders := WindowsUserFolders(e.Home)
+	roots := []string{folders["Desktop"], folders["Documents"], folders["Downloads"]}
 	groups := findDuplicates(ctx, roots, e.sem, e.Prog)
 	var items []Item
 	for _, g := range groups {
@@ -77,7 +74,7 @@ func findDuplicates(ctx context.Context, roots []string, sem chan struct{}, prog
 		if !fi.Mode().IsRegular() || fi.Size() < dupMinSize {
 			return false
 		}
-		st := statOf(fi)
+		st := statPath(filepath.Join(dir, name), fi)
 		if st.dataless {
 			return false
 		}
@@ -175,6 +172,9 @@ func regroup(ctx context.Context, buckets [][]dupFile, hash func(string, int64) 
 
 // partialHash hashes the size plus the first and last 64 KB.
 func partialHash(path string, size int64) (string, error) {
+	if !safeReadPath(path) {
+		return "", fs.ErrPermission
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -202,6 +202,9 @@ func partialHash(path string, size int64) (string, error) {
 
 // fullHash is the SHA-256 of the whole file.
 func fullHash(path string, _ int64) (string, error) {
+	if !safeReadPath(path) {
+		return "", fs.ErrPermission
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err

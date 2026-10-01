@@ -3,3 +3,7 @@ dist/
 internal/macapp/bundle/*.tar.gz
 macapp/build/
 .DS_Store
+rsrc_windows_*.syso
+windows/setup/*.syso
+windows/setup/payload/*
+!windows/setup/payload/.gitkeep

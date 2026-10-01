@@ -5,7 +5,7 @@
 <h1 align="center">Transom</h1>
 
 <p align="center">
-  <strong>A careful disk cleaner for macOS.</strong><br>
+  <strong>A careful disk cleaner for macOS and Windows.</strong><br>
   Finds caches, logs, developer junk and stale project dependencies, shows you exactly
   what it found, and only touches what you select.
 </p>
@@ -16,7 +16,7 @@ transom clean    →  moves what you selected to the Trash
 ```
 
 Transom is a sibling of Mullion, the local dev environment: one Go binary, an
-embedded web control panel, and (on macOS) a native app window around it.
+embedded web control panel, and a native app window on macOS and Windows.
 
 ## Why Transom
 
@@ -26,7 +26,8 @@ embedded web control panel, and (on macOS) a native app window around it.
   `node_modules`, large file and duplicate it found, with a size and a risk
   level, not just a single "clean everything" button.
 - **Trash by default.** Cleaning moves items to `~/.Trash`, so a mistake is one
-  Command-Z away in Finder. Permanent deletion is an explicit opt-in.
+  restore away in Finder. Windows uses the native Recycle Bin with original-location
+  restore information. Permanent deletion is an explicit opt-in.
 - **Guarded against the obvious disaster.** A path guard checks every item
   before it's touched: nothing outside your home folder or a safe temp
   directory, never `$HOME` itself or a top-level folder like Desktop or
@@ -50,7 +51,7 @@ embedded web control panel, and (on macOS) a native app window around it.
 
 **A control panel, not just a CLI**
 - One page per group, with every item's path, size and last-modified time,
-  and a Reveal-in-Finder button.
+  and a Reveal button that opens Finder or File Explorer.
 - A running total, a selection bar, and a dry-run estimate before anything
   is moved.
 - History of past cleanups: what was freed, when, and how.
@@ -63,17 +64,29 @@ embedded web control panel, and (on macOS) a native app window around it.
   no Electron. `transom ui` installs it into `/Applications` (or updates
   it there) and opens it — no separate install step needed.
 
+**Native app (Windows)**
+
+- `Transom.exe`: a native WebView2 window around the original panel, with
+  the same design, pages, icon, themes, selections, settings and history.
+  The desktop EXE opens without a console; `transom-cli.exe` provides the CLI.
+- x64 and ARM64 Setup installers and portable ZIPs. Cleanup uses Windows
+  cache paths, File Explorer and the Recycle Bin. Visual Studio and NuGet
+  replace relevant Mac tooling; Xcode, Homebrew and Apple Mail categories
+  are omitted. App-leftover detection covers uninstalled Store/MSIX packages;
+  generic desktop-app data is kept.
+
 ## Safety
 
 These principles come straight from [`docs/CONTRACT.md`](docs/CONTRACT.md),
 the internal spec this build follows:
 
-1. **Scan is always read-only.** It only ever reads metadata; nothing is
+1. **Scan is always read-only.** It only reads file contents and metadata; nothing is
    moved or deleted while scanning.
 2. **Clean only acts on the latest scan.** The panel sends item IDs, never
    raw paths — the server resolves each ID against the stored scan result,
    and an unknown ID fails instead of falling back to guessing a path.
-3. **Trash by default.** `transom clean` moves items to `~/.Trash`.
+3. **Trash by default.** `transom clean` moves items to `~/.Trash` on macOS
+   or the native Recycle Bin on Windows.
    Permanent deletion needs an explicit `--delete` (CLI) or a separate
    opt-in and confirmation (panel).
 4. **A path guard runs before anything is touched.** The resolved path
@@ -96,6 +109,31 @@ the internal spec this build follows:
    hardcoded argv, not interpolated text.
 
 ## Install
+
+### Windows
+
+Download **v0.2.0** for your processor:
+
+| Windows PC | Installer | Portable ZIP |
+| --- | --- | --- |
+| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.0/Transom-0.2.0-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.0/transom_0.2.0_windows_amd64.zip) |
+| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.0/Transom-0.2.0-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.0/transom_0.2.0_windows_arm64.zip) |
+
+Run the Setup EXE to install for your current account, create a Start Menu
+shortcut and add Transom to Windows' installed-apps list. Administrator access
+is not required. For portable use, extract the ZIP and double-click
+`Transom.exe`. Both options include the console companion `transom-cli.exe`.
+
+The Windows desktop uses the original interface in a native WebView2 window.
+It needs **Windows 10 or 11, x64 or ARM64**, and the
+[Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+If the runtime is missing, install it from Microsoft and open Transom again.
+No separate Go, Node, Python or .NET installation is needed.
+See [`windows/README.md`](windows/README.md) for Windows categories, safe cleanup,
+storage locations and builds. Windows uses its own cache paths, File Explorer
+and Recycle Bin; macOS-only categories are replaced or omitted.
+
+### macOS
 
 Download the latest release from
 **[Releases](https://github.com/anabiiil/transom/releases/latest)**:
@@ -185,6 +223,21 @@ copy at `macapp/build/Transom.app` for local testing.
 go test ./...
 ```
 
+#### Windows builds
+
+```bash
+VERSION=0.2.0 bash windows/build.sh
+```
+
+Or on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.0
+```
+
+Both build x64 and ARM64 desktop EXEs, CLI EXEs, Setup installers and portable
+ZIP packages under `dist/`, with the original icon and Windows DPI manifest.
+
 ## Commands
 
 ```
@@ -202,7 +255,8 @@ writable), and later runs update it in place whenever the installed copy is
 older than the `transom` binary you're running. Pass `--browser` for the old
 behavior instead — starting the panel's server and opening it in your
 default browser, detaching from the terminal so it stays free (use
-`--foreground` to keep it attached instead). Non-macOS always uses browser
-mode. The full HTTP contract the panel talks to the server over —
+`--foreground` to keep it attached instead). Windows opens a native desktop
+window by default; `--browser` opens a browser instead. The full HTTP contract
+the panel talks to the server over —
 endpoints, request/response shapes, and the category list — is documented
 in [`docs/CONTRACT.md`](docs/CONTRACT.md).

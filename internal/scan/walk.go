@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -20,7 +21,7 @@ type visitFunc func(dir string, siblings map[string]bool, name string, fi fs.Fil
 func walkTree(ctx context.Context, roots []string, maxDepth int, sem chan struct{}, prog *Progress, visit visitFunc) {
 	var wg sync.WaitGroup
 	for _, r := range roots {
-		if fi, err := os.Lstat(r); err != nil || !fi.IsDir() {
+		if fi, err := os.Lstat(r); err != nil || !fi.IsDir() || isReparse(fi) || !safeReadPath(r) {
 			continue
 		}
 		walkDir(ctx, r, 1, maxDepth, sem, prog, visit, &wg)
@@ -43,7 +44,7 @@ func walkDir(ctx context.Context, dir string, depth, maxDepth int, sem chan stru
 	}
 	for _, e := range entries {
 		fi, err := e.Info()
-		if err != nil {
+		if err != nil || isReparse(fi) {
 			continue
 		}
 		if !visit(dir, names, e.Name(), fi, depth) || !fi.IsDir() {
@@ -152,6 +153,11 @@ func (e *Env) homeIndex(ctx context.Context, roots []string) *treeIndex {
 		filepath.Join(e.Home, "Applications"):                             true,
 		filepath.Join(e.Home, "Pictures", "Photos Library.photoslibrary"): true,
 	}
+	if runtime.GOOS == "windows" {
+		for _, p := range []string{filepath.Join(e.Home, "AppData"), windowsAppData(e.Home, "LOCALAPPDATA", "Local"), windowsAppData(e.Home, "APPDATA", "Roaming")} {
+			skip[p] = true
+		}
+	}
 	minLarge := int64(e.Opts.LargeMinMB) * 1000 * 1000
 	idx := &treeIndex{}
 	var mu sync.Mutex
@@ -166,7 +172,7 @@ func (e *Env) homeIndex(ctx context.Context, roots []string) *treeIndex {
 				}
 				return false
 			}
-			if name == "node_modules" || strings.HasPrefix(name, ".") || skip[p] || isBundle(name) {
+			if name == "node_modules" || strings.HasPrefix(name, ".") || skip[p] || isBundle(name) || windowsProtectedTree(runtime.GOOS, name) {
 				return false
 			}
 			return true
@@ -174,7 +180,7 @@ func (e *Env) homeIndex(ctx context.Context, roots []string) *treeIndex {
 		if !fi.Mode().IsRegular() {
 			return false
 		}
-		st := statOf(fi)
+		st := statPath(p, fi)
 		if st.alloc >= minLarge && !st.dataless {
 			mu.Lock()
 			idx.large = append(idx.large, sized{path: p, info: fi, size: st.alloc, newest: fi.ModTime()})
@@ -193,8 +199,19 @@ func tildify(home, p string) string {
 	if p == home {
 		return "~"
 	}
-	if strings.HasPrefix(p, home+"/") {
-		return "~" + p[len(home):]
+	if rel, err := filepath.Rel(home, p); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+		return "~" + string(filepath.Separator) + rel
 	}
 	return p
+}
+
+func windowsProtectedTree(goos, name string) bool {
+	if goos != "windows" {
+		return false
+	}
+	switch strings.ToLower(name) {
+	case "appdata", "$recycle.bin", "system volume information", "windows", "program files", "program files (x86)", "programdata":
+		return true
+	}
+	return false
 }

@@ -2,6 +2,25 @@
 
 All notable changes to Transom. Versions follow [semantic versioning](https://semver.org).
 
+## 0.2.0 — 2026-10-01
+
+### Added
+
+- Native Windows x64 and ARM64 desktop EXEs with the original embedded UI,
+  app icon, light/dark/auto themes, preferences and cleanup history.
+- Portable ZIPs, companion CLI EXEs, per-user Setup installers, Start Menu
+  integration, uninstall support and Windows release builds.
+- Windows app and package caches, logs, temp files, Visual Studio caches,
+  native Recycle Bin scanning, recycling and explicit permanent emptying.
+- Windows disk usage, File Explorer reveal, Windows project paths and
+  AppData/system/junction protections. Windows app-leftover detection
+  covers uninstalled Store/MSIX packages using native registration checks.
+
+### Changed
+
+- macOS-only scanning categories are adapted or omitted on Windows; macOS
+  retains its original native window and scanning behavior.
+
 ## 0.1.1 — 2026-09-26
 
 ### Changed

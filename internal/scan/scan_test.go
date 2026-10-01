@@ -3,8 +3,10 @@ package scan
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +28,11 @@ func fakeHome(t *testing.T) string {
 	t.Helper()
 	h := realTemp(t)
 	t.Setenv("HOME", h)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", h)
+		t.Setenv("LOCALAPPDATA", filepath.Join(h, "AppData", "Local"))
+		t.Setenv("APPDATA", filepath.Join(h, "AppData", "Roaming"))
+	}
 	return h
 }
 
@@ -65,7 +72,7 @@ func TestSizeTree(t *testing.T) {
 	// A symlink to a big file elsewhere counts as the link only.
 	other := realTemp(t)
 	write(t, filepath.Join(other, "huge.bin"), randomBytes(t, 2_000_000))
-	if err := os.Symlink(filepath.Join(other, "huge.bin"), filepath.Join(dir, "huge-link")); err != nil {
+	if err := os.Symlink(filepath.Join(other, "huge.bin"), filepath.Join(dir, "huge-link")); err != nil && runtime.GOOS != "windows" {
 		t.Fatal(err)
 	}
 
@@ -168,7 +175,7 @@ func TestDuplicates(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s not reported", p)
 		}
-		if it.Risk != RiskCaution || it.Group == "" || !strings.Contains(it.Note, "Documents/orig.bin") {
+		if it.Risk != RiskCaution || it.Group == "" || !strings.Contains(it.Note, filepath.Join("Documents", "orig.bin")) {
 			t.Fatalf("bad item %+v", it)
 		}
 	}
@@ -314,6 +321,9 @@ func TestRunCancelled(t *testing.T) {
 }
 
 func TestUserCachesSkipsOwnedAndApple(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("macOS Library cache allowlist")
+	}
 	home := fakeHome(t)
 	t.Setenv("GOCACHE", "")
 	caches := filepath.Join(home, "Library", "Caches")
@@ -431,6 +441,9 @@ func TestCategoriesMatchContract(t *testing.T) {
 	want := []string{"user-caches", "user-logs", "temp-files", "trash", "mail-downloads", "xcode",
 		"simulators", "package-caches", "homebrew", "docker", "stale-deps", "large-files",
 		"old-downloads", "duplicates", "app-leftovers"}
+	if runtime.GOOS == "windows" {
+		want = []string{"user-caches", "user-logs", "temp-files", "trash", "visual-studio", "package-caches", "docker", "stale-deps", "large-files", "old-downloads", "duplicates", "app-leftovers"}
+	}
 	cats := Categories()
 	if len(cats) != len(want) {
 		t.Fatalf("%d categories, want %d", len(cats), len(want))
@@ -516,7 +529,8 @@ func TestStaleDepsUsesProjectRootsPref(t *testing.T) {
 	write(t, filepath.Join(home, "p", "node_modules", "y.js"), randomBytes(t, 4000))
 	setTime(t, filepath.Join(home, "p", "package.json"), old)
 
-	if err := config.SetPref(config.PrefProjectRoots, `["`+filepath.Join(ext, "Work")+`"]`); err != nil {
+	rootsJSON, _ := json.Marshal([]string{filepath.Join(ext, "Work")})
+	if err := config.SetPref(config.PrefProjectRoots, string(rootsJSON)); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Run(context.Background(), []string{"stale-deps"}, Options{}, nil)

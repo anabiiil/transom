@@ -16,13 +16,17 @@ var appInstallDest string
 
 var appCmd = &cobra.Command{
 	Use:   "app",
-	Short: "Manage the native Transom.app (macOS)",
+	Short: "Manage the native Transom desktop app",
 }
 
 var appInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install Transom.app into Applications",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS == "windows" {
+			fmt.Println("Transom.exe is portable on Windows. Copy it to your preferred folder and double-click it; no installation or administrator access is required.")
+			return nil
+		}
 		if runtime.GOOS != "darwin" {
 			fmt.Println("transom app is macOS-only.")
 			return nil
@@ -41,8 +45,11 @@ var appInstallCmd = &cobra.Command{
 
 var appOpenCmd = &cobra.Command{
 	Use:   "open",
-	Short: "Open Transom.app",
+	Short: "Open the native Transom desktop app",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS == "windows" {
+			return uiCmd.RunE(cmd, args)
+		}
 		if runtime.GOOS != "darwin" {
 			fmt.Println("transom app is macOS-only.")
 			return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -36,6 +37,9 @@ func entryItems(entries []sized, label func(s sized) string) []Item {
 func baseLabel(s sized) string { return filepath.Base(s.path) }
 
 func scanUserCaches(ctx context.Context, e *Env) ([]Item, error) {
+	if runtime.GOOS == "windows" {
+		return windowsItems(ctx, e, "user-caches"), nil
+	}
 	dir := filepath.Join(e.Home, "Library", "Caches")
 	// Folders other categories report (package managers, Homebrew) are
 	// skipped so the same bytes aren't listed twice.
@@ -57,12 +61,19 @@ func scanUserCaches(ctx context.Context, e *Env) ([]Item, error) {
 }
 
 func scanUserLogs(ctx context.Context, e *Env) ([]Item, error) {
+	if runtime.GOOS == "windows" {
+		return windowsItems(ctx, e, "user-logs"), nil
+	}
 	dir := filepath.Join(e.Home, "Library", "Logs")
 	return entryItems(e.sizePaths(ctx, children(dir)), baseLabel), nil
 }
 
 func scanTempFiles(ctx context.Context, e *Env) ([]Item, error) {
 	dir := os.TempDir()
+	if runtime.GOOS == "windows" {
+		// Never sweep a system-wide TEMP override or another user's folder.
+		dir = windowsTempDir(e.Home)
+	}
 	cutoff := time.Now().Add(-24 * time.Hour)
 	var paths []string
 	for _, p := range children(dir) {
@@ -80,7 +91,8 @@ func scanTempFiles(ctx context.Context, e *Env) ([]Item, error) {
 	for _, s := range e.sizePaths(ctx, paths) {
 		// newest covers everything inside a folder: a temp dir some
 		// process still writes into doesn't count as old.
-		if s.newest.Before(cutoff) && statOf(s.info).changed.Before(cutoff) {
+		st := statPath(s.path, s.info)
+		if s.newest.Before(cutoff) && st.changed.Before(cutoff) && st.birth.Before(cutoff) {
 			old = append(old, s)
 		}
 	}
@@ -88,6 +100,9 @@ func scanTempFiles(ctx context.Context, e *Env) ([]Item, error) {
 }
 
 func scanTrash(ctx context.Context, e *Env) ([]Item, error) {
+	if runtime.GOOS == "windows" {
+		return scanWindowsRecycleBin(ctx, e)
+	}
 	dir := filepath.Join(e.Home, ".Trash")
 	items := entryItems(e.sizePaths(ctx, children(dir)), baseLabel)
 	for i := range items {
@@ -102,7 +117,7 @@ func scanMailDownloads(ctx context.Context, e *Env) ([]Item, error) {
 }
 
 func scanOldDownloads(ctx context.Context, e *Env) ([]Item, error) {
-	dir := filepath.Join(e.Home, "Downloads")
+	dir := WindowsUserFolders(e.Home)["Downloads"]
 	cutoff := time.Now().AddDate(0, 0, -90)
 	var paths []string
 	for _, p := range children(dir) {
@@ -116,7 +131,7 @@ func scanOldDownloads(ctx context.Context, e *Env) ([]Item, error) {
 		// A download's mtime can be the server's (old) Last-Modified;
 		// ctime/birth time record when it actually landed here. Use
 		// the newest of all so nothing recent is called old.
-		st := statOf(s.info)
+		st := statPath(s.path, s.info)
 		newest := s.newest
 		for _, t := range []time.Time{st.changed, st.birth} {
 			if t.After(newest) {

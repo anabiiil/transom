@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -53,6 +52,14 @@ func newServer() *server {
 	return &server{jobs: map[string]*job{}, scanFn: scan.Run, cleanFn: clean.Run}
 }
 
+func (s *server) stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.active != nil {
+		s.active.cancel()
+	}
+}
+
 func decode(body []byte, v any) error {
 	if len(strings.TrimSpace(string(body))) == 0 {
 		return nil
@@ -93,12 +100,12 @@ func expandRoots(roots []string) ([]string, error) {
 		if r == "" {
 			continue
 		}
-		if r == "~" || strings.HasPrefix(r, "~/") {
+		if r == "~" || strings.HasPrefix(r, "~/") || (os.PathSeparator == '\\' && strings.HasPrefix(r, `~\`)) {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return nil, err
 			}
-			r = filepath.Join(home, strings.TrimPrefix(r, "~"))
+			r = filepath.Join(home, r[1:])
 		}
 		if !filepath.IsAbs(r) {
 			return nil, fmt.Errorf("root must be an absolute path: %s", r)
@@ -254,8 +261,8 @@ func (s *server) reveal(_ context.Context, body []byte) (any, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := exec.CommandContext(ctx, "/usr/bin/open", "-R", req.Path).Run(); err != nil {
-		return nil, fmt.Errorf("reveal in Finder: %v", err)
+	if err := revealPath(ctx, req.Path); err != nil {
+		return nil, fmt.Errorf("reveal file: %v", err)
 	}
 	return nil, nil
 }

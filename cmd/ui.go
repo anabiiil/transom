@@ -14,6 +14,7 @@ import (
 	"transom/internal/macapp"
 	"transom/internal/proc"
 	"transom/internal/ui"
+	"transom/internal/winapp"
 )
 
 var (
@@ -35,7 +36,8 @@ updating it, if a different version is already there) first if needed —
 around the control panel. Use --browser for the old behavior instead:
 starts the panel's server on 127.0.0.1 and opens it in your default
 browser, detached from the terminal so it stays free (use --foreground
-to keep it attached instead). Non-macOS always uses browser mode.`,
+to keep it attached instead). On Windows, opens the same control panel
+in a native desktop window; --browser uses your default browser instead.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
@@ -47,6 +49,9 @@ to keep it attached instead). Non-macOS always uses browser mode.`,
 		}
 		if uiDetached {
 			return ui.Run(ctx, detachedIdleExit, nil)
+		}
+		if runtime.GOOS == "windows" && !uiBrowser {
+			return ui.RunDesktop(ctx, winapp.Run)
 		}
 		if runtime.GOOS == "darwin" && !uiBrowser {
 			opened, err := openNativeApp()
@@ -104,6 +109,6 @@ func init() {
 	uiCmd.Flags().BoolVar(&uiDetached, "detached", false, "internal: already detached from the terminal")
 	_ = uiCmd.Flags().MarkHidden("detached")
 	uiCmd.Flags().BoolVar(&uiForeground, "foreground", false, "stay attached to the terminal (browser mode only)")
-	uiCmd.Flags().BoolVar(&uiBrowser, "browser", false, "start the panel's server and open it in your default browser instead of Transom.app")
+	uiCmd.Flags().BoolVar(&uiBrowser, "browser", false, "start the panel's server and open it in your default browser instead of the native app")
 	rootCmd.AddCommand(uiCmd)
 }
