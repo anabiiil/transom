@@ -1,16 +1,16 @@
 # Transom for Windows
 
-## Download v0.2.0
+## Download v0.2.2
 
 | Your Windows PC | Setup installer | Portable ZIP |
 | --- | --- | --- |
-| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.0/Transom-0.2.0-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.0/transom_0.2.0_windows_amd64.zip) |
-| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.0/Transom-0.2.0-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.0/transom_0.2.0_windows_arm64.zip) |
+| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_amd64.zip) |
+| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_arm64.zip) |
 
 ## التشغيل
 
 - لمعظم أجهزة ويندوز استخدم نسخة **amd64 / x64**، ولأجهزة Windows on ARM استخدم **arm64**.
-- للتثبيت شغّل `Transom-0.2.0-Setup-amd64.exe` أو `Transom-0.2.0-Setup-arm64.exe` حسب جهازك. التثبيت للمستخدم الحالي، ولا يحتاج صلاحيات مسؤول.
+- للتثبيت شغّل `Transom-0.2.2-Setup-amd64.exe` أو `Transom-0.2.2-Setup-arm64.exe` حسب جهازك. التثبيت للمستخدم الحالي، ولا يحتاج صلاحيات مسؤول.
 - للنسخة المحمولة فك ملف ZIP وشغّل `Transom.exe` مباشرة.
 - افحص الملفات أولًا، راجع اختياراتك، ثم اضغط **Clean**. التنظيف الافتراضي يرسل الملفات إلى سلة المحذوفات. إفراغ السلة يحتاج اختيار **Delete permanently** وتأكيدًا منفصلًا.
 
@@ -62,6 +62,15 @@ reparse points. Ordinary cleanup uses Windows' native Recycle Bin, preserving
 Restore information. If Windows cannot recycle a file, the item fails;
 Transom does not silently delete it permanently.
 
+Filesystem scanning excludes recognized applications, portable editors and
+folders containing them. Cleanup checks this protection again before moving
+or deleting an item, including items saved in an earlier scan. VS Code settings,
+extensions, workspace state and unsaved-file backups are protected, including
+custom `--user-data-dir` locations recognized by their settings or workspace
+storage. If a folder cannot be fully inspected, it is kept. The standard
+Windows editor profile's disposable `Cache`, `Code Cache`, `GPUCache` and `logs`
+folders remain eligible for cleanup; its `User`, `Backups` and extensions do not.
+
 Moving files to the Recycle Bin does not release disk space until the bin is
 emptied. Cleanup sizes are estimates based on the scanned files.
 
@@ -86,13 +95,13 @@ Project folders accept full Windows paths such as `C:\Users\you\Projects`,
 From Windows with Go installed:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.0
+powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.2
 ```
 
 From macOS or Linux with Go and `zip`:
 
 ```bash
-VERSION=0.2.0 bash windows/build.sh
+VERSION=0.2.2 bash windows/build.sh
 ```
 
 Both scripts build x64 and ARM64 executables and installers with the original

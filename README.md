@@ -18,6 +18,9 @@ transom clean    →  moves what you selected to the Trash
 Transom is a sibling of Mullion, the local dev environment: one Go binary, an
 embedded web control panel, and a native app window on macOS and Windows.
 
+See the [wiki](https://github.com/anabiiil/transom/wiki) for installation and
+updates, usage, safety and recovery, and troubleshooting.
+
 ## Why Transom
 
 - **Scanning never changes anything.** Every category is read-only until you
@@ -34,8 +37,9 @@ embedded web control panel, and a native app window on macOS and Windows.
   Documents, never a symlink target.
 - **Applications and editor data are protected.** Cache cleanup keeps app
   installations, updater staging, VS Code settings, extensions and unsaved-file
-  backups. The same protection applies to portable editors and old scan results
-  on macOS and Windows.
+  backups, including recognized custom `--user-data-dir` locations. The same
+  protection applies to portable editors and old scan results on macOS and
+  Windows.
 
 ## Features
 
@@ -111,17 +115,23 @@ the internal spec this build follows:
 7. **Commands run from a fixed allowlist**, never a shell string — things
    like `brew cleanup -s` or `xcrun simctl delete unavailable` are exact,
    hardcoded argv, not interpolated text.
+8. **Applications and editor state are checked twice.** Filesystem scanning
+   excludes recognized apps, editor profiles and folders containing them;
+   cleanup checks again before moving or deleting each item. This also protects
+   VS Code profiles in custom `--user-data-dir` locations when their settings or
+   workspace-storage layout is present. If a folder cannot be fully inspected,
+   it is kept instead of assuming it is safe to clean.
 
 ## Install
 
 ### Windows
 
-Download **v0.2.0** for your processor:
+Download **v0.2.2** for your processor:
 
 | Windows PC | Installer | Portable ZIP |
 | --- | --- | --- |
-| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.0/Transom-0.2.0-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.0/transom_0.2.0_windows_amd64.zip) |
-| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.0/Transom-0.2.0-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.0/transom_0.2.0_windows_arm64.zip) |
+| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_amd64.zip) |
+| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_arm64.zip) |
 
 Run the Setup EXE to install for your current account, create a Start Menu
 shortcut and add Transom to Windows' installed-apps list. Administrator access
@@ -230,13 +240,13 @@ go test ./...
 #### Windows builds
 
 ```bash
-VERSION=0.2.0 bash windows/build.sh
+VERSION=0.2.2 bash windows/build.sh
 ```
 
 Or on Windows:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.0
+powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.2
 ```
 
 Both build x64 and ARM64 desktop EXEs, CLI EXEs, Setup installers and portable
@@ -255,8 +265,8 @@ transom version
 
 On macOS, `transom ui` opens the native `Transom.app`: the first run installs
 it into `/Applications` (falling back to `~/Applications` if that isn't
-writable), and later runs update it in place whenever the installed copy is
-older than the `transom` binary you're running. Pass `--browser` for the old
+writable), and later runs update it in place whenever its version differs
+from the `transom` binary you're running. Pass `--browser` for the old
 behavior instead — starting the panel's server and opening it in your
 default browser, detaching from the terminal so it stays free (use
 `--foreground` to keep it attached instead). Windows opens a native desktop
