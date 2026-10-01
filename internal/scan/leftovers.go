@@ -274,8 +274,14 @@ func findApps(dir string, depth int, into map[string]bool) bool {
 	}
 	entries, err := readDirUnsorted(dir)
 	if err != nil {
-		// Optional installation roots need not exist.
-		return os.IsNotExist(err)
+		// Some platforms report a directory-read error on an existing
+		// regular file as "not found". Only a genuinely absent optional
+		// root is harmless; an existing or unverifiable root is incomplete.
+		if os.IsNotExist(err) {
+			_, statErr := os.Lstat(dir)
+			return os.IsNotExist(statErr)
+		}
+		return false
 	}
 	complete := true
 	for _, entry := range entries {
