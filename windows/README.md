@@ -1,16 +1,16 @@
 # Transom for Windows
 
-## Download v0.2.2
+## Download v0.2.3
 
 | Your Windows PC | Setup installer | Portable ZIP |
 | --- | --- | --- |
-| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_amd64.zip) |
-| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_arm64.zip) |
+| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.3/Transom-0.2.3-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.3/transom_0.2.3_windows_amd64.zip) |
+| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.3/Transom-0.2.3-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.3/transom_0.2.3_windows_arm64.zip) |
 
 ## التشغيل
 
 - لمعظم أجهزة ويندوز استخدم نسخة **amd64 / x64**، ولأجهزة Windows on ARM استخدم **arm64**.
-- للتثبيت شغّل `Transom-0.2.2-Setup-amd64.exe` أو `Transom-0.2.2-Setup-arm64.exe` حسب جهازك. التثبيت للمستخدم الحالي، ولا يحتاج صلاحيات مسؤول.
+- للتثبيت شغّل `Transom-0.2.3-Setup-amd64.exe` أو `Transom-0.2.3-Setup-arm64.exe` حسب جهازك. التثبيت للمستخدم الحالي، ولا يحتاج صلاحيات مسؤول.
 - للنسخة المحمولة فك ملف ZIP وشغّل `Transom.exe` مباشرة.
 - افحص الملفات أولًا، راجع اختياراتك، ثم اضغط **Clean**. التنظيف الافتراضي يرسل الملفات إلى سلة المحذوفات. إفراغ السلة يحتاج اختيار **Delete permanently** وتأكيدًا منفصلًا.
 
@@ -95,13 +95,13 @@ Project folders accept full Windows paths such as `C:\Users\you\Projects`,
 From Windows with Go installed:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.2
+powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.3
 ```
 
 From macOS or Linux with Go and `zip`:
 
 ```bash
-VERSION=0.2.2 bash windows/build.sh
+VERSION=0.2.3 bash windows/build.sh
 ```
 
 Both scripts build x64 and ARM64 executables and installers with the original

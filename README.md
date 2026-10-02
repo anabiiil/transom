@@ -126,12 +126,12 @@ the internal spec this build follows:
 
 ### Windows
 
-Download **v0.2.2** for your processor:
+Download **v0.2.3** for your processor:
 
 | Windows PC | Installer | Portable ZIP |
 | --- | --- | --- |
-| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_amd64.zip) |
-| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.2/Transom-0.2.2-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.2/transom_0.2.2_windows_arm64.zip) |
+| x64 / Intel / AMD | [Download x64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.3/Transom-0.2.3-Setup-amd64.exe) | [Download x64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.3/transom_0.2.3_windows_amd64.zip) |
+| ARM64 | [Download ARM64 Setup](https://github.com/anabiiil/transom/releases/download/v0.2.3/Transom-0.2.3-Setup-arm64.exe) | [Download ARM64 ZIP](https://github.com/anabiiil/transom/releases/download/v0.2.3/transom_0.2.3_windows_arm64.zip) |
 
 Run the Setup EXE to install for your current account, create a Start Menu
 shortcut and add Transom to Windows' installed-apps list. Administrator access
@@ -240,13 +240,13 @@ go test ./...
 #### Windows builds
 
 ```bash
-VERSION=0.2.2 bash windows/build.sh
+VERSION=0.2.3 bash windows/build.sh
 ```
 
 Or on Windows:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.2
+powershell -ExecutionPolicy Bypass -File windows\build.ps1 -Version 0.2.3
 ```
 
 Both build x64 and ARM64 desktop EXEs, CLI EXEs, Setup installers and portable

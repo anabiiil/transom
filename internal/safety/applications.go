@@ -49,7 +49,35 @@ func editorRoots(home, goos string) []editorRoot {
 	return roots
 }
 
-func protectedLocation(path, home, goos string, profiles []editorRoot) bool {
+// protection holds what protectedLocation compares against, resolved once:
+// CheckCleanup consults it for every entry of a folder it walks, and
+// resolving symlinks per entry made large cache folders take minutes.
+type protection struct {
+	profiles []editorRoot
+	appRoots []string // installation folders, plus their symlink targets
+}
+
+func newProtection(home, goos string) protection {
+	p := protection{profiles: editorRoots(home, goos)}
+	addApps := func(root string) {
+		p.appRoots = append(p.appRoots, root)
+		if real, err := filepath.EvalSymlinks(root); err == nil {
+			p.appRoots = append(p.appRoots, real)
+		}
+	}
+	addApps(filepath.Join(home, "Applications"))
+	if goos == "windows" {
+		local := filepath.Join(home, "AppData", "Local")
+		if p := os.Getenv("LOCALAPPDATA"); filepath.IsAbs(p) {
+			local = p
+		}
+		addApps(filepath.Join(local, "Programs"))
+	}
+	return p
+}
+
+func protectedLocation(path string, prot protection) bool {
+	profiles := prot.profiles
 	for _, part := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
 		name := strings.ToLower(part)
 		if name == ".vscode" || strings.HasPrefix(name, ".vscode-") || name == ".cursor" || name == ".windsurf" ||
@@ -80,27 +108,12 @@ func protectedLocation(path, home, goos string, profiles []editorRoot) bool {
 		}
 		return true
 	}
-	if insideResolved(path, filepath.Join(home, "Applications")) {
-		return true
-	}
-	if goos == "windows" {
-		local := filepath.Join(home, "AppData", "Local")
-		if p := os.Getenv("LOCALAPPDATA"); filepath.IsAbs(p) {
-			local = p
-		}
-		if insideResolved(path, filepath.Join(local, "Programs")) {
+	for _, root := range prot.appRoots {
+		if inside(path, root) {
 			return true
 		}
 	}
 	return false
-}
-
-func insideResolved(path, root string) bool {
-	if inside(path, root) {
-		return true
-	}
-	real, err := filepath.EvalSymlinks(root)
-	return err == nil && inside(path, real)
 }
 
 func directory(path string) bool {
@@ -146,6 +159,33 @@ func IsEditorDataDir(path string) bool {
 		directory(filepath.Join(user, "workspaceStorage"))
 }
 
+// markerNames are the lower-cased child names IsApplicationDir and
+// IsEditorDataDir look for.
+var markerNames = map[string]bool{
+	"contents": true, "wrapper": true, "info.plist": true, "resources": true, "user": true,
+	"code.exe": true, "code - insiders.exe": true, "vscodium.exe": true, "cursor.exe": true, "windsurf.exe": true,
+}
+
+// mayHoldApplication is a cheap pre-check for CheckCleanup's walk: one
+// directory listing instead of IsApplicationDir's and IsEditorDataDir's
+// individual probes. It only rules a folder out when none of their marker
+// names is present; anything unreadable gets the full checks.
+func mayHoldApplication(path string) bool {
+	if strings.EqualFold(filepath.Ext(path), ".app") {
+		return true
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return true
+	}
+	for _, e := range entries {
+		if markerNames[strings.ToLower(e.Name())] {
+			return true
+		}
+	}
+	return false
+}
+
 func disposableProfileCache(path, root string, profiles []editorRoot) bool {
 	for _, profile := range profiles {
 		if !profile.allowCaches || !strings.EqualFold(filepath.Clean(root), filepath.Clean(profile.path)) {
@@ -163,8 +203,12 @@ func disposableProfileCache(path, root string, profiles []editorRoot) bool {
 // ProtectedLocation is a cheap check for an installation/profile itself or
 // anything inside it, including a configured project root inside an app.
 func ProtectedLocation(path, home, goos string) bool {
-	profiles := editorRoots(home, goos)
-	if protectedLocation(path, home, goos, profiles) {
+	return protectedFrom(path, newProtection(home, goos))
+}
+
+func protectedFrom(path string, prot protection) bool {
+	profiles := prot.profiles
+	if protectedLocation(path, prot) {
 		return true
 	}
 	for ancestor := filepath.Clean(path); ; ancestor = filepath.Dir(ancestor) {
@@ -188,13 +232,14 @@ func CheckCleanup(ctx context.Context, path, home, goos string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if ProtectedLocation(path, home, goos) {
+	prot := newProtection(home, goos)
+	if protectedFrom(path, prot) {
 		return fmt.Errorf("refusing to remove an application or editor data: %s", path)
 	}
 	if parent, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
 		path = filepath.Join(parent, filepath.Base(path))
 	}
-	if ProtectedLocation(path, home, goos) {
+	if protectedFrom(path, prot) {
 		return fmt.Errorf("refusing to remove an application or editor data: %s", path)
 	}
 	info, err := os.Lstat(path)
@@ -207,7 +252,6 @@ func CheckCleanup(ctx context.Context, path, home, goos string) error {
 	if !info.IsDir() {
 		return nil
 	}
-	profiles := editorRoots(home, goos)
 	visited := 0
 	return filepath.WalkDir(path, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -220,7 +264,7 @@ func CheckCleanup(ctx context.Context, path, home, goos string) error {
 		if visited > inspectionLimit {
 			return fmt.Errorf("cannot safely inspect this large folder; preserving %s", path)
 		}
-		if protectedLocation(p, home, goos, profiles) || entry.IsDir() && (IsApplicationDir(p) || IsEditorDataDir(p)) {
+		if protectedLocation(p, prot) || entry.IsDir() && mayHoldApplication(p) && (IsApplicationDir(p) || IsEditorDataDir(p)) {
 			return fmt.Errorf("folder contains an application or editor data; preserving %s", path)
 		}
 		return nil

@@ -2,6 +2,17 @@
 
 All notable changes to Transom. Versions follow [semantic versioning](https://semver.org).
 
+## 0.2.3 — 2026-10-03
+
+### Fixed
+
+- Cleaning on Windows no longer appears to hang. The safety check before
+  moving items to the Recycle Bin re-inspected every cache folder once per
+  selected item and resolved the same folders again for every file it
+  walked, so checking a few dozen cache items could take several minutes.
+  It now inspects each category once per cleanup and resolves protected
+  locations once per check; the same protections still apply.
+
 ## 0.2.2 — 2026-10-01
 
 ### Fixed

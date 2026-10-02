@@ -155,3 +155,26 @@ func TestCleanupPreservesOnCancellationAndInspectionError(t *testing.T) {
 		}
 	}
 }
+
+// The walk's directory-listing pre-check must not hide an application or
+// editor profile nested deep inside an otherwise ordinary cache folder.
+func TestCleanupFindsNestedApplicationsInLargeCaches(t *testing.T) {
+	home := t.TempDir()
+	cache := filepath.Join(home, "AppData", "Local", "big-cache")
+	for i := 0; i < 50; i++ {
+		write(t, filepath.Join(cache, "content", string(rune('a'+i%26)), "blob"))
+	}
+	if err := CheckCleanup(context.Background(), cache, home, "windows"); err != nil {
+		t.Fatalf("plain cache refused: %v", err)
+	}
+	for _, marker := range []string{"x/Code.exe", "y/resources/app.asar", "z/User/settings.json", "w/Thing.app/Contents/Info.plist"} {
+		nested := filepath.Join(cache, "content", "q", "deep", filepath.FromSlash(marker))
+		write(t, nested)
+		if err := CheckCleanup(context.Background(), cache, home, "windows"); err == nil {
+			t.Errorf("cache containing %s allowed", marker)
+		}
+		if err := os.RemoveAll(filepath.Join(cache, "content", "q")); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

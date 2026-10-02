@@ -103,6 +103,10 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 	// their bytes were already counted with the folder.
 	sort.SliceStable(files, func(i, j int) bool { return pathKey(files[i].Path) < pathKey(files[j].Path) })
 	var done []string // paths removed so far (or that would be)
+	// The per-category guard is computed once per run: on Windows it
+	// re-lists and safety-checks the category's whole cleanup allowlist,
+	// which is far too slow to repeat for every selected item.
+	guards := map[string]Guard{}
 	cats := []string{}
 	catSeen := map[string]bool{}
 	succeed := func(it scan.Item, freed int64) {
@@ -134,13 +138,17 @@ func Run(ctx context.Context, res *scan.Result, req Request) (*Result, error) {
 			succeed(it, 0)
 			continue
 		}
-		g := guard
-		if it.Category == "stale-deps" {
-			// Dependency folders may live on a projects volume outside
-			// $HOME: allow exactly the roots this scan searched.
-			g.ProjectRoots = res.Roots
+		g, ok := guards[it.Category]
+		if !ok {
+			g = guard
+			if it.Category == "stale-deps" {
+				// Dependency folders may live on a projects volume outside
+				// $HOME: allow exactly the roots this scan searched.
+				g.ProjectRoots = res.Roots
+			}
+			g = platformGuard(g, it)
+			guards[it.Category] = g
 		}
-		g = platformGuard(g, it)
 		target, err := g.CheckContext(ctx, it.Path)
 		if err != nil {
 			fail(it, err)
